@@ -2,6 +2,7 @@ import datetime
 import random
 from random import choice
 import query
+import numpy as np
 
 class metadata(object):
     def __init__(self):
@@ -32,12 +33,13 @@ class queryNode(object):
             self.result = None
         self.groupingFlag = 0
         self.resultG = None
-        if len(self.result) > 10:
+        if len(self.result) > 100:
             self.groupingFlag = 1
             self.grouping()
         self.preprocess()
         self.possible_children = self.allChlidren()
         self.children_indices = [-1 for _ in range(len(self.possible_children))]
+        self.profQ = len(self.resultG) if self.grouping else len(self.result)
         self.times = 0
         self.profit = 0.0
         self.ppt = 0.0
@@ -217,6 +219,8 @@ class mcts(object):
         self.timeL = datetime.timedelta(seconds=timeL)      # in seconds
         self.gamma = gamma
         self.decay = decay
+        self.heightList = None  # min distance to leaf node
+        self.uctList = None     # uct values of each node
 
     def nodesRecommand(self):
         startT = datetime.datetime.utcnow()
@@ -229,6 +233,7 @@ class mcts(object):
             endT = datetime.datetime.utcnow()
             if endT-startT >= self.timeL:
                 break
+        # 排名
 
     def constructNewNodefromChild(self, pid, child):
         """
@@ -291,6 +296,9 @@ class mcts(object):
         :param qsource: query which source
         :return: new node idx
         """
+        conditionType = 1
+        condition = [120.3551055, 120.9374903, 28.13387079, 27.876454730000003]
+        qsource = 0
         cid = len(self.nodesList)
         source = qsource
         rootQueryNode = queryNode(source=source,
@@ -312,11 +320,37 @@ class mcts(object):
         :return:
         """
         self.currentNodesFlag[cidx] = 1
+    
+    def getNodeHeight(self, current):
+        childIdx = self.nodesChildren[current]
+        if len(childIdx) == 0:
+            self.heightList[current] = 0
+        else:
+            for idx in childIdx:
+                self.heightList[current] = min(self.getNodeHeight(idx)+1, self.heightList[current])
+        return self.heightList[current]
 
     def selectSubRoot(self):
-        pass
+        nodeNum = len(self.nodesList)
+        self.heightList = np.array([10.] * nodeNum)
+        self.getNodeHeight(0)
+        # height normalization
+        normHeightList = self.heightList / np.sum(self.heightList)
+        pptList = [node.ppt for node in self.nodesList]
+        importList = [normHeightList[i] * pptList[i] for i in range(len(pptList))]
+        # sample node based on importance of nodes
+        sampleIdx = np.random.choice(list(range(nodeNum)), 1, p=importList)
+        return self.nodesList[sampleIdx], self.heightList[sampleIdx]
+    
+    # def updateProfit(self, current):
+    #     childIdx = self.nodesChildren[current]
+    #     if len(childIdx) > 0:
+    #         for idx in childIdx:
+    #             self.uctList[]
 
-    def selectNode(self):
+
+
+    def selectNode(self, croot):
         pass
 
     def simulation(self, selected, init_depth):
@@ -354,3 +388,8 @@ class mcts(object):
         for node in self.nodesList:
             node.times *= self.decay
             node.profit *= self.decay
+
+if __name__ == '__main__':
+    m = mcts(query.queryObj())
+    # m.selectSubRoot()
+    m.constructNewNodefromCondition(None, None, None)
