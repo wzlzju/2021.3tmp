@@ -24,12 +24,12 @@ class queryObj(object):
 
     def readInData(self):
         with open(self.filepath+"/new_mobile_traj.json", "r") as f:
-            self.data["mobileTraj"] = json.load(f)[:10000]      # [[{"time":"2014-01-13 23:58:34.12","lng":float,"lat":float}]]
+            self.data["mobileTraj"] = json.load(f)[:1000]      # [[{"time":"2014-01-13 23:58:34.12","lng":float,"lat":float}]]
         with open(self.filepath+"/taxi_421.json", "r") as f:
-            self.data["taxiTraj"] = json.load(f)[:10000]        # [[{"time":"2014-01-13 23:58:34.12","lng":float,"lat":float}]]
+            self.data["taxiTraj"] = json.load(f)[:1000]        # [[{"time":"2014-01-13 23:58:34.12","lng":float,"lat":float}]]
         with open(self.filepath+'/weibo_2014-01-14_all.csv')as f:
             f_csv = csv.reader(f)
-            self.data["weibo"] = [row for row in f_csv][1:][:10000]     # (float:) [[2014-01-14 00:50,120.6462979,28.00516276],...]
+            self.data["weibo"] = [row for row in f_csv][1:][:1000]     # (float:) [[2014-01-14 00:50,120.6462979,28.00516276],...]
 
     def query(self, source, tRange=None, sRange=None):
         if type(source) is int:

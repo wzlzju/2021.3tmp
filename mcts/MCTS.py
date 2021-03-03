@@ -19,7 +19,7 @@ meta = metadata()
 class queryNode(object):
     def __init__(self, source=None, conditionType=None, condition=None, queryObj=None):
         self.source = source
-        self.conditionType = conditionType
+        self.conditionType = conditionType if type(conditionType) is str else {0:"T",1:"S",2:"A"}[conditionType]
         self.condition = condition
         self.queryObj = queryObj
         if queryObj:
@@ -33,13 +33,13 @@ class queryNode(object):
             self.result = None
         self.groupingFlag = 0
         self.resultG = None
-        if len(self.result) > 100:
+        if len(self.result) > 1000:
             self.groupingFlag = 1
             self.grouping()
         self.preprocess()
         self.possible_children = self.allChlidren()
         self.children_indices = [-1 for _ in range(len(self.possible_children))]
-        self.profQ = len(self.resultG) if self.grouping else len(self.result)
+        self.profQ = len(self.resultG) if self.groupingFlag else len(self.result)
         self.times = 0
         self.profit = 0.0
         self.ppt = 0.0
@@ -389,7 +389,14 @@ class mcts(object):
             node.times *= self.decay
             node.profit *= self.decay
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     m = mcts(query.queryObj())
-    # m.selectSubRoot()
-    m.constructNewNodefromCondition(None, None, None)
+    m.constructNewNodefromCondition(1,[120.3551055, 120.6374903, 28.00387079, 27.876454730000003],0)
+    print(m.nodesList)
+    print(m.rootsList)
+    print(m.nodesList[0].groupingFlag)
+    print(len(m.nodesList[0].result),m.nodesList[0].result)
+    if m.nodesList[0].groupingFlag:
+        print(len(m.nodesList[0].resultG),m.nodesList[0].resultG)
+    print(len(m.nodesList[0].possible_children),m.nodesList[0].possible_children)
+    print(len(m.nodesList[0].children_indices),m.nodesList[0].children_indices)
