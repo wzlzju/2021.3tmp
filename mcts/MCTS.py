@@ -42,7 +42,8 @@ class queryNode(object):
         self.profQ = len(self.resultG) if self.groupingFlag else len(self.result)
         self.times = 0
         self.profit = 0.0
-        self.ppt = 0.0
+        self.profitHistory = []
+        self.ppt = 1.0
 
     def grouping(self):
         self.resultG = []
@@ -220,7 +221,7 @@ class mcts(object):
         self.gamma = gamma
         self.decay = decay
         self.heightList = None  # min distance to leaf node
-        self.uctList = None     # uct values of each node
+        self.depthList = None  # distance to root node
 
     def nodesRecommand(self):
         startT = datetime.datetime.utcnow()
@@ -324,61 +325,82 @@ class mcts(object):
     def getNodeHeight(self, current):
         childIdx = self.nodesChildren[current]
         if len(childIdx) == 0:
-            self.heightList[current] = 0
+            self.heightList[current] = 1
         else:
             for idx in childIdx:
                 self.heightList[current] = min(self.getNodeHeight(idx)+1, self.heightList[current])
         return self.heightList[current]
+    
+    def getNodeDepth(self, current, cdepth):
+        self.depthList[current] = cdepth
+        childIdx = self.nodesChildren[current]
+        if len(childIdx) != 0:
+            for idx in childIdx:
+                self.getNodeDepth(idx, cdepth+1)
 
     def selectSubRoot(self):
         nodeNum = len(self.nodesList)
-        self.heightList = np.array([10.] * nodeNum)
-        self.getNodeHeight(0)
+        self.heightList = np.array([10] * nodeNum)
+        self.depthList = np.array([0] * nodeNum)
+        for root in self.rootsList:
+            self.getNodeHeight(root)
+            self.getNodeDepth(root, 0)
         # height normalization
         normHeightList = self.heightList / np.sum(self.heightList)
         pptList = [node.ppt for node in self.nodesList]
         importList = [normHeightList[i] * pptList[i] for i in range(len(pptList))]
         # sample node based on importance of nodes
-        sampleIdx = np.random.choice(list(range(nodeNum)), 1, p=importList)
-        return self.nodesList[sampleIdx], self.heightList[sampleIdx]
-    
-    # def updateProfit(self, current):
-    #     childIdx = self.nodesChildren[current]
-    #     if len(childIdx) > 0:
-    #         for idx in childIdx:
-    #             self.uctList[]
-
-
+        sampleIdx = np.random.choice(list(range(nodeNum)), 1, p=importList)[0]
+        return self.nodesList[sampleIdx], self.depthList[sampleIdx]
 
     def selectNode(self, croot):
-        pass
+        current = croot
+        while -1 not in self.nodesList[current].children_indices:
+            maxProfit = 0
+            for childIdx in self.nodesList[current].children_indices:
+                if self.nodesList[childIdx].profit > maxProfit:
+                    maxProfit = self.nodesList[childIdx].profit
+                    current = childIdx
+        return current
+    
+    def randomSelectChild(self, node):
+        selectList = [idx for idx in range(len(node.children_indices)) 
+            if node.children_indices[idx] == -1]
+        selectIdx = choice(selectList)
+        dataIdx, conditionType, source = node.possible_children[selectIdx]
+        condition = node.QCs[conditionType][dataIdx]
+        # print(source, conditionType, condition)
+        selectNode = queryNode(source=source,
+                            conditionType=conditionType,
+                            condition=condition,
+                            queryObj=self.queryObj)
+        return selectNode
 
     def simulation(self, selected, init_depth):
-        pass
-        # result = 0
-        # cdepth = init_depth
-        # cnode = self.nodesList[selected]
-        # while(True):
-        #     if cdepth > self.depthL:
-        #         break
-        #     # random select a node
-        #     cnode = randomSelectChild(cnode)
-        #     # calculate current profit
-        #     cprofit = 0
-        #     result += self.decay**(cdepth-init_depth)*cprofit
-        # return result
-
+        result = 0
+        relativeDepth = 1
+        cnode = self.nodesList[selected]
+        while(True):
+            if relativeDepth > self.depthL:
+                break
+            # random select a node
+            cnode = self.randomSelectChild(cnode)
+            # calculate current profit
+            result += self.gamma**(relativeDepth) * cnode.profit
+            relativeDepth += 1
+        return result
 
     def backpropagation(self, current, result):
-        pass
-        # while(True):
-        #     if current == -1:
-        #         break
-        #     self.nodesList[current].times += 1
-        #     self.nodesList[current].profit += result
-        #     self.nodesList[current].ppt = self.nodesList[current].profit/self.nodesList[current].times
-        #     current = self.nodesParent[current]
-        #     result *= self.gamma
+        while(True):
+            if current == -1:
+                break
+            cprofit = self.nodesList[current].profQ
+            childIdx = self.nodesChildren[current]
+            for idx in childIdx:
+                cprofit += self.gamma * self.nodesList[idx].profit / len(childIdx)
+            self.nodesList[current].profitHistory.append(cprofit)
+            self.nodesList[current].ppt = np.mean(self.nodesList[current].profitHistory)
+            current = self.nodesParent[current]
 
     def recordsDecay(self):
         """
@@ -391,12 +413,15 @@ class mcts(object):
 
 if __name__ == "__main__":
     m = mcts(query.queryObj())
-    m.constructNewNodefromCondition(1,[120.3551055, 120.6374903, 28.00387079, 27.876454730000003],0)
-    print(m.nodesList)
-    print(m.rootsList)
-    print(m.nodesList[0].groupingFlag)
-    print(len(m.nodesList[0].result),m.nodesList[0].result)
-    if m.nodesList[0].groupingFlag:
-        print(len(m.nodesList[0].resultG),m.nodesList[0].resultG)
-    print(len(m.nodesList[0].possible_children),m.nodesList[0].possible_children)
-    print(len(m.nodesList[0].children_indices),m.nodesList[0].children_indices)
+    m.constructNewNodefromCondition(1, [120.3551055, 120.6374903, 28.00387079, 27.876454730000003],0)
+    # print(m.nodesList)
+    # print(m.rootsList)
+    # print(m.nodesList[0].groupingFlag)
+    # print(len(m.nodesList[0].result),m.nodesList[0].result)
+    # if m.nodesList[0].groupingFlag:
+    #     print(len(m.nodesList[0].resultG),m.nodesList[0].resultG)
+    # print(len(m.nodesList[0].possible_children),m.nodesList[0].possible_children)
+    # print(len(m.nodesList[0].children_indices),m.nodesList[0].children_indices)
+
+    print(m.simulation(0, 10))
+
