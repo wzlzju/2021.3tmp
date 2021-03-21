@@ -24,7 +24,7 @@ m = mcts(query.queryObj())
 @cross_origin()
 def recommend():
     sourceDict = {"people": 0, "car": 1, "blog": 2, "point_of_interest": 3}
-    conditionTypeDict = {"time": "T", "geo": "S"}
+    # conditionTypeDict = {"time": "T", "geo": "S"}
 
     # data = {
     #     "behavior": "rootQuery",
@@ -34,17 +34,9 @@ def recommend():
     # data = {
     #     "behavior": "childQuery",
     #     "source": "car",
-    #     "father": 1,
+    #     "father": 0,
     #     "dataid": "001a7d352bbe17d45bf6be3b",
-    #     "dataattr": {
-    #         "type": "S",
-    #         "data": [
-    #             120.66808428955079,
-    #             120.66408428955079,
-    #             28.01710810852051,
-    #             28.01310810852051,
-    #         ],
-    #     },
+    #     "sqlobject": {"time": ["00:00:00", "05:00:00"], "geo": [130, 110, 30, 20]},
     #     "datasource": "point_of_interest",
     # }
     # returnResult = {
@@ -78,33 +70,42 @@ def recommend():
     if behavior == "rootQuery":
         source = sourceDict[data.get("source")]
         sqlObject = data.get("sqlobject")
-        for conditionType, condition in sqlObject.items():
-            rootNode = m.constructNewNodefromCondition(
-                conditionTypeDict[conditionType], condition, source
-            )
-            print('Children number of root:', len(m.nodesList))
-        returnResult = {'id': rootNode, 'recommend': m.nodesRecommend()}
-        print(returnResult)
+        print('sqlObject', sqlObject)
+        # conditionDict = {}
+        # for conditionType, condition in sqlObject.items():
+        #     conditionType = conditionTypeDict[conditionType]
+        #     conditionDict[conditionType] = condition
+        # rootNode = m.constructNewNodefromCondition(conditionDict, source)
+        rootNode = m.constructNewNodefromCondition(sqlObject, source)
+        print('Children number of root:', len(m.nodesList))
+        returnResult = {'id': rootNode, 'recommend': m.nodesRecommendByDRL()}
     elif behavior == "childQuery":
-        source = sourceDict[data.get("datasource")]
-        father, dataId, dataAttr = (
+        source = sourceDict[data.get("source")]
+        father, dataId, sqlObject = (
             data.get("father"),
             data.get("dataid"),
-            data.get("dataattr"),
+            data.get("sqlobject"),
         )
+        # conditionDict = {}
+        # for conditionType, condition in sqlObject.items():
+        #     conditionType = conditionTypeDict[conditionType]
+        #     conditionDict[conditionType] = condition
+        # print('conditionDict:', conditionDict)
+        # childNode = m.constructNewNodefromQuery(
+        #     father, dataId, conditionDict, source
+        # )
         childNode = m.constructNewNodefromQuery(
-            father, dataId, dataAttr["type"], source
+            father, dataId, sqlObject, source
         )
-        returnResult = {'id': childNode, 'recommend': m.nodesRecommend()}
-        print(returnResult)
+        returnResult = {'id': childNode, 'recommend': m.nodesRecommendByDRL()}
     elif behavior == "selectRecommend":
         cidx = data.get("id")
         m.confirmNode(cidx)
-        returnResult = {"recommend": m.nodesRecommend()}
-        print(returnResult)
+        returnResult = {"recommend": m.nodesRecommendByDRL()}
     else:
         returnResult = {}
-
+    
+    print('returnResult:', returnResult)
     response = Response(json.dumps(returnResult), mimetype="application/json")
     # response.headers["Access-Control-Allow-Origin"] = "*"
     # print(response.headers)

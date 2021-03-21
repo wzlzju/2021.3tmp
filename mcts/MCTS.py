@@ -4,58 +4,111 @@ from random import choice
 import query
 import numpy as np
 import math
+import copy
+from api import API
 from tools import *
 
 
 class metadata(object):
     def __init__(self):
-        self.sourceNum = 3
-        self.source = list(range(self.sourceNum))
         self.sourceName = ["mobileTraj", "taxiTraj", "weibo", "poi"]
+        self.newSourceName = ["people", "car", "blog", "point_of_interest"]
+        self.sourceNum = len(self.newSourceName)
+        self.source = list(range(self.sourceNum))
         self.sourceDataType = ["traj", "traj", "point", "point"]
         self.sourceDataNSTAttr = [[], [], [], []]
         self.sourceSTType = ["st", "st", "sta", "sa"]
-        self.dataNum = [10000, 10000, 10000, 10000]
+        self.dataNum = [3798, 965, 10000, 5000]
+        self.conditionTypeNum = 3
+        # self.dataNum = {"mobileTraj": 10000, "taxiTraj": 10000, "weibo": 10000, "poi": 10000}
+        self.initialization()
+    
+    def initialization(self):
+        self.recordData = [set(), set(), set(), set()]
+        self.tmpRecordData = []
+        self.recordStcubes = set()
+    
+    def updateResultData(self, source, resultList):
+        # print('updateResultData')
+        dataIdSet = self.recordData[source]
+        dataIdList = []
+        for result in resultList:
+            dataIdList.append(result['id'])
+            self.recordStcubes = self.recordStcubes.union(result['stcubes'])
+        self.recordData[source] = dataIdSet.union(dataIdList)
+        return len(self.recordData[source]) - len(dataIdSet)
+    
+    def updateTmpData(self, source, resultList):
+        dataSet = self.tmpRecordData[source]
+        resultIdList = [result['id'] for result in resultList]
+        self.tmpRecordData[source] = dataSet.union(resultIdList)
+        return len(self.tmpRecordData[source]) - len(dataSet)
+    
+    def copyFromRecord(self):
+        self.tmpRecordData = copy.deepcopy(self.recordData)
 
 
 meta = metadata()
 
 
 class queryNode(object):
-    def __init__(self, source=None, conditionType=None, condition=None, queryObj=None):
-        self.source = source #
-        self.conditionType = (
-            conditionType
-            if type(conditionType) is str
-            else {0: "T", 1: "S", 2: "A"}[conditionType]
-        )
-        self.condition = condition #
-        self.queryObj = queryObj
-        if queryObj:
-            if self.conditionType == "S":
-                self.result = queryObj.queryIdxSimplify(source, sRange=condition)
-            elif self.conditionType == "T":
-                self.result = queryObj.queryIdxSimplify(source, tRange=condition)
-            elif self.conditionType == "A":
-                pass
+    def __init__(self, **kwargs):
+        self.source = kwargs.get('source')
+        self.numConditionType = 2
+        self.queryObj = kwargs.get('queryObj')
+        self.queryFrom = kwargs.get('queryFrom')
+        self.conditionDict = kwargs.get('conditionDict')
+
+        if self.source in meta.newSourceName:
+            self.source = meta.newSourceName.index(self.source)
+        if 'time' in self.conditionDict.keys():
+            if 'geo' in self.conditionDict.keys():
+                self.conditionType = 0
+            else:
+                self.conditionType = 1
         else:
+            self.conditionType = 2
+
+        if self.queryObj is None:
             self.result = None
+        elif self.queryFrom is 'user': 
+            self.result = self.queryObj.queryIdxSimplify(self.source, self.conditionDict)[:3]
+            newDataNum = meta.updateResultData(self.source, self.result)
+        else:
+            self.dataIdFromFather = kwargs.get('dataIdFromFather')
+            self.sourceFromFather = kwargs.get('sourceFromFather')
+            self.scubeList = kwargs.get('scubeList')
+            self.result = self.queryObj.queryByDataId(
+                self.dataIdFromFather, self.sourceFromFather, self.source, self.conditionType)
+            newDataNum = meta.updateTmpData(self.source, self.result)
+        
         self.groupingFlag = 0
         self.resultG = None
         if len(self.result) > 100000:
             self.groupingFlag = 1
             self.grouping()
-        self.preprocess()
+        # self.preprocess()
         self.possible_children = self.allChlidren()
-        self.children_indices = [-1 for _ in range(len(self.possible_children))] #
-        self.resultLen = len(self.resultG) if self.groupingFlag else len(self.result) #
-        print('source:', self.source,  'conditionType:', self.conditionType,
-            'condition:', self.condition, 'resultLen:', self.resultLen)
-        self.profQ = abs(math.log(self.resultLen/10000, 2)) #
-        self.times = 0 #
-        self.profit = 0.0 #
-        self.profitHistory = [] #
-        self.ppt = 1.0 #
+        self.children_indices = [-1 for _ in range(len(self.possible_children))]
+        self.resultLen = len(self.resultG) if self.groupingFlag else len(self.result)
+        
+        print('source:', self.source, 
+            'queryFrom:', self.queryFrom, 
+            'conditionDict:', self.conditionDict, 
+            'resultLen:', self.resultLen, '\n')
+        
+        oldDataNum = self.resultLen - newDataNum
+        if newDataNum - oldDataNum/10 <= 0:
+            self.profQ = 0
+        elif meta.dataNum[self.source]-len(meta.recordData[self.source]) <= 0:
+            self.profQ = 0
+        else:
+            self.profQ = abs(math.log((newDataNum-oldDataNum/10)/(
+                meta.dataNum[self.source]-len(meta.recordData[self.source])), 2))
+        self.times = 0
+        self.profit = 0.0
+        self.profitHistory = []
+        self.ppt = 1.0
 
     def grouping(self):
         self.resultG = []
@@ -177,9 +230,18 @@ class queryNode(object):
                     self.TQC.append(r["bbx"]["timeRange"])
         self.QCs = [self.TQC, self.SQC, self.AQC]
 
-    def allChlidren(
-        self,
-    ):  # return: [data/data group(index), T/S/A(0/1/2), source(0/1/2/3...)]
+    def allChlidren(self):  
+        """
+        Return: 
+            [data/data group(index), T/S/A(0/1/2), source(0/1/2/3...)]
+        """
+        def getEnumeration(x=0, yMax=[1, 1], zMax=1):
+            return [[x, [y_0, y_1], z]
+                for y_0 in range(yMax[0]+1) 
+                for y_1 in range(yMax[1]+1) 
+                for z in range(zMax+1) 
+                if y_0 !=0 or y_1 != 0]
+
         ret = []
         if self.groupingFlag == 1:
             for i in range(len(self.resultG)):
@@ -215,51 +277,61 @@ class queryNode(object):
                     # ret.append([i,2,2])
                     # ret.append([i,2,3])
         else:
-            for i in range(len(self.result)):
-                if meta.sourceName[self.source] == "mobileTraj":
-                    ret.append([i, 0, 0])
-                    ret.append([i, 0, 1])
-                    ret.append([i, 0, 2])
-                    ret.append([i, 1, 0])
-                    ret.append([i, 1, 1])
-                    ret.append([i, 1, 2])
-                    ret.append([i,1,3])
-                elif meta.sourceName[self.source] == "taxiTraj":
-                    ret.append([i, 0, 0])
-                    ret.append([i, 0, 1])
-                    ret.append([i, 0, 2])
-                    ret.append([i, 1, 0])
-                    ret.append([i, 1, 1])
-                    ret.append([i, 1, 2])
-                    ret.append([i,1,3])
-                elif meta.sourceName[self.source] == "weibo":
-                    ret.append([i, 0, 0])
-                    ret.append([i, 0, 1])
-                    ret.append([i, 0, 2])
-                    ret.append([i, 1, 0])
-                    ret.append([i, 1, 1])
-                    ret.append([i, 1, 2])
-                    ret.append([i,1,3])
-                    #ret.append([i,2,2])
-                    #ret.append([i,2,3])
-                elif meta.sourceName[self.source] == "poi":
-                    ret.append([i, 1, 0])
-                    ret.append([i, 1, 1])
-                    ret.append([i, 1, 2])
-                    ret.append([i, 1, 3])
-                    # ret.append([i,2,2])
-                    # ret.append([i,2,3])
+            ret = [[i, 0, j] for i in range(len(self.result)) for j in range(meta.sourceNum)]
+            # for i in range(len(self.result)):
+            #     if meta.sourceName[self.source] == "mobileTraj":
+            #         # ret.append([i, 0, 0])
+            #         # ret.append([i, 0, 1])
+            #         # ret.append([i, 0, 2])
+            #         # ret.append([i, 1, 0])
+            #         # ret.append([i, 1, 1])
+            #         # ret.append([i, 1, 2])
+            #         ret += getEnumeration(i, [1, 1], 2)
+            #         ret.append([i, [0, 1], 3])
+            #     elif meta.sourceName[self.source] == "taxiTraj":
+            #         # ret.append([i, 0, 0])
+            #         # ret.append([i, 0, 1])
+            #         # ret.append([i, 0, 2])
+            #         # ret.append([i, 1, 0])
+            #         # ret.append([i, 1, 1])
+            #         # ret.append([i, 1, 2])
+            #         ret += getEnumeration(i, [1, 1], 2)
+            #         ret.append([i, [0, 1], 3])
+            #     elif meta.sourceName[self.source] == "weibo":
+            #         # ret.append([i, 0, 0])
+            #         # ret.append([i, 0, 1])
+            #         # ret.append([i, 0, 2])
+            #         # ret.append([i, 1, 0])
+            #         # ret.append([i, 1, 1])
+            #         # ret.append([i, 1, 2])
+            #         ret += getEnumeration(i, [1, 1], 2)
+            #         ret.append([i, [0, 1], 3])
+            #         #ret.append([i,2,2])
+            #         #ret.append([i,2,3])
+            #     elif meta.sourceName[self.source] == "poi":
+            #         # ret.append([i, 1, 0])
+            #         # ret.append([i, 1, 1])
+            #         # ret.append([i, 1, 2])
+            #         # ret.append([i, 1, 3])
+            #         ret += getEnumeration(i, [0, 1], 3)
+            #         # ret.append([i,2,2])
+            #         # ret.append([i,2,3])
         return ret
 
 
 class mcts(object):
-    def __init__(self, queryObj=None, depthL=10, timeL=10.0, gamma=0.1, decay=0.1):
+    def __init__(self, queryObj=None, depthL=10, timeL=1000, gamma=0.1, decay=0.1):
         self.queryObj = queryObj
         self.depthL = depthL
-        self.timeL = datetime.timedelta(seconds=timeL)  # in seconds
+        # self.timeL = datetime.timedelta(seconds=timeL)  # in seconds
+        self.timeL = int(timeL)
         self.gamma = gamma
         self.decay = decay
         self.initialization()
+        self.dataConfig = API().query(url='py/querySTConfig', type="get")
+        self.scubeNum = self.dataConfig['scubeNum']
+        self.dataIdList = API().query(url='py/queryDataSetIds', type="get")
+        self.dataIdDict = dict(zip(self.dataIdList, range(len(self.dataIdList))))
     
     def initialization(self):
         self.nodesList = []  # [queryNode]
@@ -270,6 +342,8 @@ class mcts(object):
         self.heightList = None  # min distance to leaf node
         self.depthList = None  # distance to root node
         self.pptDict = None
+        self.availChildDict, self.target2dataId, self.dataId2profit, self.dataId2coin = {}, {}, {}, {}
+        meta.initialization()
     
     def getPpt(self, current):
         childIdx = self.nodesChildren[current]
@@ -279,32 +353,190 @@ class mcts(object):
             for idx in childIdx:
                 self.getPpt(idx)
 
-
-    def nodesRecommend(self, recommendNum=3):
-        startT = datetime.datetime.utcnow()
+    def mtcsStep(self):
         self.recordsDecay()
+        i = 0
         while True:
-            croot, cdepth = self.selectSubRoot()
-            cselected = self.selectNode(croot)
-            cresult = self.simulation(cselected, cdepth)
-            self.backpropagation(cselected, cresult)
-            endT = datetime.datetime.utcnow()
-            if endT - startT >= self.timeL:
-                break
+            print('------------ Round', str(i+1), '------------')
+            try:
+                meta.copyFromRecord()
+                croot, cdepth = self.selectSubRoot()
+                cselected = self.selectNode(croot)
+                if cselected is None: break
+                cresult = self.simulation(cselected, cdepth)
+                self.backpropagation(cselected, cresult)
+            except Exception as e:
+                i -= 1
+                print('Error:', e)
+            i += 1
+            if i >= self.timeL: break
+    
+    def getTargetIdx(self, scube, source, conditionType):
+        """
+        Get idx in DRL output according to scube, source and conditionType.
+        """
+        return conditionType + meta.conditionTypeNum * (source + meta.sourceNum * scube)
 
+    def DRLTrain(self, recommendNum=10):
+        self.mtcsStep()
         self.pptDict = {}
         for root in self.rootsList:
             self.getPpt(root)
-        pptSortedList = sorted(self.pptDict.items(), key=lambda item:item[1], reverse=False)
+        self.pptDict = {key: val/sum(self.pptDict.values()) for key, val in self.pptDict.items()}
+
+        geoProfit = [0] * (self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
+        for nodeId, nodeProfit in self.pptDict.items():
+            for scube in self.nodesList[nodeId].scubeList:
+                targetIdx = self.getTargetIdx(scube, self.nodesList[nodeId].source, 0)
+                geoProfit[targetIdx] += nodeProfit / len(self.nodesList[nodeId].scubeList)
+        
+        DRLInput = [0] * len(self.dataIdList)
+        for dataSet in meta.recordData:
+            for dataId in dataSet:
+                DRLInput[self.dataIdDict[dataId]] = 1
+        
+        pptSortedList = sorted(self.pptDict.items(), key=lambda item:item[1], reverse=True)
         idxSortedList = [item[0] for item in pptSortedList]
         recommendList = [{'id': idx, 
             'father': self.nodesParent[idx], 
             'source': ["people", "car", "blog", "point_of_interest"][self.nodesList[idx].source], 
-            'type': self.nodesList[idx].conditionType, 
-            'data': self.nodesList[idx].condition}
+            'dataid': self.nodesList[idx].dataIdFromFather,
+            'mode': self.nodesList[idx].conditionType,
+            'sqlobject': self.nodesList[idx].conditionDict}
             for idx in idxSortedList[: recommendNum]]
+            
+        return {'input': DRLInput, 'target': geoProfit}, recommendList
+    
+    def nodesRecommendByDRL(self, recommendNum=3):
+        start = datetime.datetime.utcnow()
+        # targetProfit = [0] * (self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
+        targetProfit = np.random.rand(self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
+        targetProfit = targetProfit / np.sum(targetProfit)
+        targetProfit = targetProfit.tolist()
+        # print(len(targetProfit), sum(targetProfit))
+        
+        def recordAvailChild(current):
+            cnode = self.nodesList[current]
+            for idx, child in enumerate(cnode.possible_children):
+                timeDetail = []
+                if cnode.children_indices[idx] < 0:
+                    resultId, conditionType, source = child
+                    cresult = cnode.result[resultId]
+                    # record infomation of all available children
+                    if cresult['id'] not in self.availChildDict.keys():
+                        self.availChildDict[cresult['id']] = {
+                            'father': current, 
+                            'source': ["people", "car", "blog", "point_of_interest"][source], 
+                            'dataid': cresult['id'],
+                            'mode': conditionType,
+                            'sqlobject': cresult['bbx'],
+                            'scubeList': cresult['scube'],
+                            'stcubeList': cresult['stcubes']
+                        }
+                    for scube in cresult['scube']:
+                        targetIdx = self.getTargetIdx(scube, source, conditionType)
+                        if targetIdx not in self.target2dataId.keys():
+                            self.target2dataId[targetIdx] = [cresult['id']]
+                        elif cresult['id'] not in self.target2dataId[targetIdx]:
+                            self.target2dataId[targetIdx].append(cresult['id'])
+            for targetIdx, dataIdList in self.target2dataId.items():
+                for dataId in dataIdList:
+                    profitPart = targetProfit[targetIdx] / len(dataIdList)
+                    if dataId not in self.dataId2profit.keys():
+                        self.dataId2profit[dataId] = profitPart
+                    else:
+                        self.dataId2profit[dataId] += profitPart
+            # traverse all children nodes
+            childIdx = self.nodesChildren[current]
+            if len(childIdx) != 0:
+                print('traverse all children nodes')
+                for idx in childIdx:
+                    recordAvailChild(idx)
+        
+        for root in self.rootsList:
+            recordAvailChild(root)
+        
+        end1 = datetime.datetime.utcnow()
+        print('Time 1 consume:', end1-start)
+        
+        dataIdSortedList = sorted(self.dataId2profit.items(), key=lambda item:item[1], reverse=True)
+        dataIdSortedList = [item[0] for item in dataIdSortedList][: recommendNum]
+        meta.copyFromRecord()
+        for dataId in dataIdSortedList:
+            dataInfo = self.availChildDict[dataId]
+            cid = self.constructNewNodefromChild(dataInfo['father'], {
+                'source': dataInfo['source'], 
+                'dataIdFromFather': dataId,
+                'sourceFromFather': self.nodesList[dataInfo['father']].source,
+                'scubeList': dataInfo['scubeList'],
+                'conditionDict': dataInfo['sqlobject'], 
+            })
+            self.availChildDict[dataId]['id'] = cid
+            # 计算每个推荐项的查询结果的stcube的set，总共3个
+            # 所有已经获得的数据的stcube的set（所有用户已经建立节点的result）
+            # 用上面的3个set分别与下面的set求交集
+            # 取出这个交集的大小，用来对3个推荐项排序
+            self.dataId2coin[dataId] = len(meta.recordStcubes.union(dataInfo['stcubeList']))
+        dataIdSortedByCoin = sorted(self.dataId2coin.items(), key=lambda item:item[1], reverse=True)
+        dataIdSortedByCoin = [item[0] for item in dataIdSortedByCoin]
+        recommendList = [self.availChildDict[dataId] for dataId in dataIdSortedByCoin]
+        for recommend in recommendList:
+            recommend.pop('scubeList')
+            recommend.pop('stcubeList')
+        
+        end2 = datetime.datetime.utcnow()
+        print('Time 2 consume:', end2-end1)
         return recommendList
 
+        # self.pptDict = {}
+        # for root in self.rootsList:
+        #     self.getPpt(root)
+        
+        # targetIdDic = {}            # target id -> node id list
+        # for idx in self.pptDict.keys():
+        #     for scube in self.nodesList[idx].scubeList:
+        #         targetIdx = self.getTargetIdx(
+        #             scube, self.nodesList[idx].source, self.nodesList[idx].conditionType)
+        #         if targetIdx not in targetIdDic:
+        #             targetIdDic[targetIdx] = [idx]
+        #         elif idx not in targetIdDic[targetIdx]:
+        #             targetIdDic[targetIdx] += [idx]
+        
+        # idProfitDict = {}           # node id -> profit
+        # for targetIdx, idList in targetIdDic.items():
+        #     for nodeId in idList:
+        #         if nodeId in idProfitDict:
+        #             idProfitDict[nodeId] += targetProfit[targetIdx] / len(idList)
+        #         else:
+        #             idProfitDict[nodeId] = targetProfit[targetIdx] / len(idList)
+
+        # profitSortedList = sorted(idProfitDict.items(), key=lambda item:item[1], reverse=True)
+        # idxSortedList = [item[0] for item in profitSortedList]
+        recommendList = [{'id': idx, 
+            'father': self.nodesParent[idx], 
+            'source': ["people", "car", "blog", "point_of_interest"][self.nodesList[idx].source], 
+            'dataid': self.nodesList[idx].dataIdFromFather,
+            'mode': self.nodesList[idx].conditionType,
+            'sqlobject': self.nodesList[idx].conditionDict}
+            for idx in idxSortedList[: recommendNum]]
+        # return recommendList
+
+    def nodesRecommend(self, recommendNum=3):
+        # startT = datetime.datetime.utcnow()
+        self.mtcsStep()
+        self.pptDict = {}
+        for root in self.rootsList:
+            self.getPpt(root)
+        pptSortedList = sorted(self.pptDict.items(), key=lambda item:item[1], reverse=True)
+        idxSortedList = [item[0] for item in pptSortedList]
+        recommendList = [{'id': idx, 
+            'father': self.nodesParent[idx], 
+            'source': ["people", "car", "blog", "point_of_interest"][self.nodesList[idx].source], 
+            'dataid': self.nodesList[idx].dataIdFromFather,
+            'mode': self.nodesList[idx].conditionType,
+            'sqlobject': self.nodesList[idx].conditionDict}
+            for idx in idxSortedList[: recommendNum]]
+        return recommendList
 
     def constructNewNodefromChild(self, pid, child):
         """
@@ -314,22 +546,20 @@ class mcts(object):
         :return: new node idx
         """
         cid = len(self.nodesList)
-        source = child[2]
-        conditionType = {0: "T", 1: "S", 2: "A"}[child[1]]
-        condition = self.nodesList[pid].QCs[child[1]][child[0]]
-        self.nodesList.append(
-            queryNode(
-                source=source,
-                conditionType=conditionType,
-                condition=condition,
-                queryObj=self.queryObj,
-            )
-        )
+        # print('child:', child)
+        self.nodesList.append(queryNode(source=child['source'],
+                                        dataIdFromFather=child['dataIdFromFather'],
+                                        sourceFromFather=child['sourceFromFather'],
+                                        scubeList=child['scubeList'], 
+                                        conditionDict=child['conditionDict'],
+                                        queryFrom='sys',
+                                        queryObj=self.queryObj))
+        
         self.nodesParent[cid] = int(pid)
         self.nodesChildren[cid] = []
         self.nodesChildren[pid] += [cid]
         p = self.nodesList[pid]
-        p.children_indices[p.possible_children.index(child)] = cid
+        # p.children_indices[p.possible_children.index(child)] = cid
         self.currentNodesFlag.append(0)
         return cid
 
@@ -345,33 +575,27 @@ class mcts(object):
         :return: new node idx
         """
         p = self.nodesList[qnode]
-        print('len(p.result):', len(p.result))
-        # 处理一下qdata，从数据id转成result中的索引
+        # 从数据id转成result中的索引
         for idx, item in enumerate(p.result):
-            if qdata == item["id"]:
+            if qdata == item["id"]: 
                 qdataIdx = idx
-        qattr = {"T": 0, "S": 1, "A": 2}[qattr]
-        child = [qdataIdx, qattr, qsource]
-        # qattr处理成整型
-        cid = p.children_indices[p.possible_children.index(child)]
+                scubeList = item['scube']
+        
+        cid = self.constructNewNodefromChild(qnode, child={
+            'source': qsource,
+            'dataIdFromFather': qdata,
+            'sourceFromFather': p.source,
+            'scubeList': scubeList,
+            'conditionDict': qattr})
+        
+        typeFlag = {0: [1, 1], 1: [1, 0], 2: [0, 1]}[self.nodesList[cid].conditionType]
+        childList = [qdataIdx, typeFlag, qsource]
+        p.possible_children.append(childList)
+        p.children_indices.append(cid)
         self.confirmNode(cid)
-        # cid = len(self.nodesList)
-        # source = qsource
-        # if type(qattr) is int:
-        #     conditionType = {0:"T",1:"S",2:"A"}[qattr]
-        # else:
-        #     print("Error. check query attr type in constructNewNodefromQuery(). ")
-        # condition = self.nodesList[qnode].QCs[qattr][qdata]
-        # self.nodesList.append(queryNode(source=source,
-        #                                 conditionType=conditionType,
-        #                                 condition=condition,
-        #                                 queryObj=self.queryObj))
-        # self.nodesParent[cid] = qnode
-        # self.nodesChildren[cid] = []
-        # self.currentNodesFlag.append(0)
         return cid
 
-    def constructNewNodefromCondition(self, conditionType, condition, qsource):
+    def constructNewNodefromCondition(self, conditionDict, qsource):
         """
         user uses this func to construct a new root query
         :param conditionType: 0: T, 1: S, 2: A
@@ -383,9 +607,9 @@ class mcts(object):
         source = qsource
         rootQueryNode = queryNode(
             source=source,
-            conditionType=conditionType,
-            condition=condition,
+            conditionDict=conditionDict,
             queryObj=self.queryObj,
+            queryFrom='user'
         )
         self.nodesList.append(rootQueryNode)
         self.rootsList.append(cid)
@@ -402,6 +626,8 @@ class mcts(object):
         :return:
         """
         self.currentNodesFlag[cidx] = 1
+        cnode = self.nodesList[cidx]
+        meta.updateResultData(cnode.source, cnode.result)
 
     def getNodeHeight(self, current):
         childIdx = self.nodesChildren[current]
@@ -437,10 +663,20 @@ class mcts(object):
         # sample node based on importance of nodes
         sampleIdx = np.random.choice(list(range(nodeNum)), 1, p=importList)[0]
         return sampleIdx, self.depthList[sampleIdx]
+    
+    def getConditionDict(self, conditionType, fullCondition):
+        conditionDict = {}
+        conditionTypeList = {0: [1, 1], 1: [1, 0], 2: [0, 1]}[conditionType]
+        for idx, val in enumerate(conditionTypeList):
+            if val == 1:
+                conditionType = ['time', 'geo', 'TBD'][idx]
+                conditionDict[conditionType] = fullCondition[conditionType]
+        return conditionDict
 
     def selectNode(self, croot):
         current = croot
         childrenIndices = self.nodesList[current].children_indices
+        if len(childrenIndices) == 0: return None
         while -1 not in childrenIndices:
             maxProfit = 0
             for childIdx in childrenIndices:
@@ -448,23 +684,38 @@ class mcts(object):
                     maxProfit = self.nodesList[childIdx].profit
                     current = childIdx
             childrenIndices = self.nodesList[current].children_indices
-        selectList = [self.nodesList[current].possible_children[i] 
-            for i in range(len(childrenIndices)) if childrenIndices[i] == -1]
-        selectChild = choice(selectList)
-        print('selectChild:', selectChild)
-        expandIndice = self.constructNewNodefromChild(current, selectChild)
+        # 从当前的父节点中选择一个子节点
+        currentFather = self.nodesList[current]
+        selectList = [idx for idx in range(len(childrenIndices)) if childrenIndices[idx] == -1]
+        selectChildIdx = choice(selectList)
+
+        resultIdx, conditionType, selectSource = currentFather.possible_children[selectChildIdx]
+        conditionDict = self.getConditionDict(
+            conditionType, currentFather.result[resultIdx]['bbx'])
+        expandIndice = self.constructNewNodefromChild(current, child={'source': selectSource,
+            'dataIdFromFather': currentFather.result[resultIdx]['id'],
+            'sourceFromFather': currentFather.source,
+            'scubeList': currentFather.result[resultIdx]['scube'],
+            'conditionDict': conditionDict})
+        
+        currentFather.children_indices[selectChildIdx] = expandIndice
         return expandIndice
 
     def randomSelectChild(self, node):
         selectList = [idx for idx in range(len(node.children_indices))
             if node.children_indices[idx] == -1]
+        if len(selectList) == 0:
+            return None
         selectIdx = choice(selectList)
         dataIdx, conditionType, source = node.possible_children[selectIdx]
-        condition = node.QCs[conditionType][dataIdx]
-        # print(source, conditionType, condition)
+        conditionDict = self.getConditionDict(
+            conditionType, node.result[dataIdx]['bbx'])
         selectNode = queryNode(source=source,
-                            conditionType=conditionType,
-                            condition=condition,
+                            dataIdFromFather=node.result[dataIdx]['id'],
+                            sourceFromFather=node.source,
+                            scubeList=node.result[dataIdx]['scube'],
+                            queryFrom='sys',
+                            conditionDict=conditionDict,
                             queryObj=self.queryObj)
         return selectNode
 
@@ -477,6 +728,8 @@ class mcts(object):
                 break
             # random select a node
             cnode = self.randomSelectChild(cnode)
+            if cnode is None:
+                break
             # calculate current profit
             result += self.gamma ** (relativeDepth) * cnode.profQ
             relativeDepth += 1
@@ -511,7 +764,7 @@ class mcts(object):
         logList = [
             {
                 'source': node.source, 
-                'condition': node.condition,
+                'condition': node.conditionDict,
                 'resultLen:': node.resultLen,
                 'profQ': node.profQ, 
                 'times': node.times,
@@ -527,30 +780,40 @@ class mcts(object):
 
 if __name__ == "__main__":
     m = mcts(query.queryObj())
-    m.constructNewNodefromCondition(
-        1, [120.66627502441406, 120.66387176513672, 28.008345489218808, 28.00561744200495], 0
-    )
-    # print(m.nodesList)
-    # print(m.rootsList)
-    # print(m.nodesList[0].groupingFlag)
-    # print(len(m.nodesList[0].result),m.nodesList[0].result)
-    # if m.nodesList[0].groupingFlag:
-    #     print(len(m.nodesList[0].resultG),m.nodesList[0].resultG)
-    # print(len(m.nodesList[0].possible_children),m.nodesList[0].possible_children)
-    # print(len(m.nodesList[0].children_indices),m.nodesList[0].children_indices)
+    # conditionDict = {
+    #     'geo': [120.69783926010132, 120.69760859012602, 28.013147821134936, 28.012896816979197],
+    #     'time': ["07:00:00", "08:00:00"]
+    # }
+    # m.constructNewNodefromCondition(conditionDict, 0)
+    # for t in range(100):
+    #     recommendList = m.nodesRecommend(recommendNum=10)
+    #     choiceId = recommendList[0]['id']
+    #     print('choiceId:', choiceId)
+    #     m.confirmNode(choiceId)
+    #     # 要记录：
+    #     # 推荐前10的节点id，nodeList
+    #     recommendIdList = [item['id'] for item in recommendList]
+    #     saveJson({'recommendId': recommendIdList, 'currentNodesFlag': m.currentNodesFlag, 
+    #         'nodesParent': m.nodesParent, 'nodeList': m.recommendLog()}, 'log')
+    for t in range(256):
+        queryCondition = API().query(type='get', url='py/mockReq')
+        print(queryCondition)
+        m.initialization()
+        m.constructNewNodefromCondition(queryCondition['attr'], queryCondition['source'])
+        for _ in range(5):
+            trainItem, recommendList = m.DRLTrain()
+            saveJson(trainItem, 'train')
 
-    # print(m.simulation(0, 10))
-    # print(m.nodesRecommend())
-    # print(len(m.nodesList))
-    # print(m.currentNodesFlag)
-
-    for t in range(100):
-        recommendList = m.nodesRecommend(recommendNum=10)
-        choiceId = recommendList[0]['id']
-        print('choiceId:', choiceId)
-        m.confirmNode(choiceId)
-        # 要记录：
-        # 推荐前10的节点id，nodeList
-        recommendIdList = [item['id'] for item in recommendList]
-        saveJson({'recommendId': recommendIdList, 'currentNodesFlag': m.currentNodesFlag, 
-            'nodesParent': m.nodesParent, 'nodeList': m.recommendLog()}, 'log')
+            choiceId = recommendList[0]['id']
+            choiceNode = m.nodesList[choiceId]
+            print('========================================')
+            print('choice node:', 'source', choiceNode.source, 
+                'attr:', choiceNode.conditionDict, 
+                'resultLen:', choiceNode.resultLen)
+            print('========================================\n')
+            m.confirmNode(choiceId)
+            # 要记录：
+            # 推荐前10的节点id，nodeList
+            recommendIdList = [item['id'] for item in recommendList]
+            saveJson({'recommendId': recommendIdList, 'currentNodesFlag': m.currentNodesFlag, 
+                'nodesParent': m.nodesParent, 'nodeList': m.recommendLog()}, 'log')

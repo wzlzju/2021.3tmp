@@ -102,36 +102,26 @@ class queryObj(object):
                 result = [i for i,d in enumerate(self.data["weibo"]) if self.pInSRange(sRange,float(d[1]),float(d[2])) and self.pInTRange(tRange,d[0])]
         return result
 
-    def queryIdxSimplify(self, source, tRange=None, sRange=None):
-        # if type(source) is int:
-        #     if source < 0 or source >= len(self.data.keys()):
-        #         print("Unavailable source type")
-        #         return
-        #     source = list(self.data.keys())[source]
-        # if source not in self.data.keys():
-        #     print("Unavailable source type")
-        #     return
-        if tRange is None and sRange is None:
+    def queryIdxSimplify(self, source, conditionDict):
+        # tRange = conditionDict['time'] if 'time' in conditionDict.keys() else None
+        # sRange = conditionDict['geo'] if 'geo' in conditionDict.keys() else None
+        # if tRange is None and sRange is None:
+        #     return self.data[source]
+        # result = API().query(payload={'source': source, 'attr': {'time': tRange, 'geo': sRange}})
+        if 'time' not in conditionDict and 'geo' not in conditionDict:
             return self.data[source]
-        # if tRange is not None and sRange is not None:
-        #     print("Multi-condition query is not supported. Please use an AND operation. ")
-        #     return
-        # result = []
-        # if tRange is None:
-        #     if source == "mobileTraj":
-        #         result = [i for i,d in enumerate(self.data["mobileTraj"]) if self.tinbbox(None,d,sRange)]
-        #     elif source == "taxiTraj":
-        #         result = [i for i,d in enumerate(self.data["taxiTraj"]) if self.tinbbox(None,d,sRange)]
-        #     elif source == "weibo":
-        #         result = [i for i,d in enumerate(self.data["weibo"]) if self.pinbbox(None,d,sRange)]
-        # elif sRange is None:
-        #     if source == "mobileTraj":
-        #         result = [i for i,d in enumerate(self.data["mobileTraj"]) if self.tintbox(None,d,tRange)]
-        #     elif source == "taxiTraj":
-        #         result = [i for i,d in enumerate(self.data["taxiTraj"]) if self.tintbox(None,d,tRange)]
-        #     elif source == "weibo":
-        #         result = [i for i,d in enumerate(self.data["weibo"]) if self.pintbox(None,d,tRange)]
-        result = API().query(payload={'source': source, 'attr': {'T': tRange, 'S': sRange}})
+        result = API().query(payload={'source': source, 'attr': conditionDict}, 
+            url="py/query", type="post")
+        return result
+    
+    def queryByDataId(self, idx, originSource, targetSource, mode):
+        if idx is None or originSource is None:
+            print('idx:', idx, 'originSource:', originSource)
+            exit()
+        result = API().queryByDataId(payload={'id': idx, 
+            'originSource': originSource, 
+            'targetSource': targetSource, 
+            'mode': mode})
         return result
 
     def pInSRange(self, sRange, lng, lat):

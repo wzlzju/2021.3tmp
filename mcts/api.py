@@ -58,23 +58,40 @@ class API:
         data = convert_resbody_to_obj(res)
         print("Taxi Data: ", len(data))
 
-    def query(self, **kwargs):
+    # def query(self, **kwargs):
+    #     payload = kwargs.get("payload")
+    #     # print('payload:', payload)
+    #     res = RequestHandler().post(HOST + "py/query", json=payload)
+    #     data = convert_resbody_to_obj(res)
+    #     # data = [
+    #     #     {
+    #     #         "id": "浙C04937.LOG",
+    #     #         "stcubes": [23, 32, 33],
+    #     #         "bbx": {
+    #     #             "timeRange": ["00:00:03", "23:59:45"],
+    #     #             "areaRange": [120.723029, 120.627524, 28.027669, 27.988246],
+    #     #         },
+    #     #     },
+    #     # ]
+    #     # convert
+    #     # print("Query Data: ", len(data))
+    #     return data
+    
+    def queryByDataId(self, **kwargs):
         payload = kwargs.get("payload")
-        # print('payload:', payload)
-        res = RequestHandler().post(HOST + "py/query", json=payload)
+        res = RequestHandler().post(HOST + "py/queryByDataId", json=payload)
         data = convert_resbody_to_obj(res)
-        # data = [
-        #     {
-        #         "id": "浙C04937.LOG",
-        #         "stcubes": [23, 32, 33],
-        #         "bbx": {
-        #             "timeRange": ["00:00:03", "23:59:45"],
-        #             "areaRange": [120.723029, 120.627524, 28.027669, 27.988246],
-        #         },
-        #     },
-        # ]
-        # convert
-        # print("Query Data: ", len(data), data[0])
+        return data
+    
+    def query(self, **kwargs):
+        requestType = kwargs.get("type")
+        url = kwargs.get("url")
+        if requestType is 'get':
+            res = RequestHandler().get(HOST+url)
+        else:
+            payload = kwargs.get("payload")
+            res = RequestHandler().post(HOST+url, json=payload)
+        data = convert_resbody_to_obj(res)
         return data
 
 
@@ -90,4 +107,4 @@ if __name__ == "__main__":
         "geo": [120.707524, 120.623029, 28.027669, 27.988246],
         "time": ["00:06:33", "03:12:56"],
     }
-    API().query(payload=payload)
+    API().query(payload=payload, url="py/query", type="post")
