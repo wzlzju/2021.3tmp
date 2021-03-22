@@ -18,7 +18,7 @@ class metadata(object):
         self.sourceDataType = ["traj", "traj", "point", "point"]
         self.sourceDataNSTAttr = [[], [], [], []]
         self.sourceSTType = ["st", "st", "sta", "sa"]
-        self.dataNum = [3798, 965, 10000, 5000]
+        self.dataNum = [3798, 1000, 9934, 5000]
         self.conditionTypeNum = 3
         # self.dataNum = {"mobileTraj": 10000, "taxiTraj": 10000, "weibo": 10000, "poi": 10000}
         self.initialization()

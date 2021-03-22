@@ -18,9 +18,9 @@ class queryObj(object):
     def __init__(self, path="./data"):
         self.filepath = path
         self.data = {}
-        self.readInData()
-        self.partition = [100,100,100]  # lng,lat,t
-        self.precalculate()
+        # self.readInData()
+        # self.partition = [100,100,100]  # lng,lat,t
+        # self.precalculate()
         print("Initialization completed. ")
 
     def readInData(self):
