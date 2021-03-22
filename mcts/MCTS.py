@@ -18,9 +18,9 @@ class metadata(object):
         self.sourceDataType = ["traj", "traj", "point", "point"]
         self.sourceDataNSTAttr = [[], [], [], []]
         self.sourceSTType = ["st", "st", "sta", "sa"]
-        self.dataNum = [3798, 1000, 9934, 5000]
+        self.dataNum = [3799, 1000, 7350, 5000]
         self.conditionTypeNum = 3
-        # self.dataNum = {"mobileTraj": 10000, "taxiTraj": 10000, "weibo": 10000, "poi": 10000}
+        self.decay=0.1
         self.initialization()
     
     def initialization(self):
@@ -72,7 +72,7 @@ class queryNode(object):
         if self.queryObj is None:
             self.result = None
         elif self.queryFrom is 'user': 
-            self.result = self.queryObj.queryIdxSimplify(self.source, self.conditionDict)[:3]
+            self.result = self.queryObj.queryIdxSimplify(self.source, self.conditionDict)
             newDataNum = meta.updateResultData(self.source, self.result)
         else:
             self.dataIdFromFather = kwargs.get('dataIdFromFather')
@@ -105,10 +105,8 @@ class queryNode(object):
         else:
             self.profQ = abs(math.log((newDataNum-oldDataNum/10)/(
                 meta.dataNum[self.source]-len(meta.recordData[self.source])), 2))
-        self.times = 0
-        self.profit = 0.0
-        self.profitHistory = []
-        self.ppt = 1.0
+        
+        self.profit, self.times, self.ppt = 0.0, 0, 1.0
 
     def grouping(self):
         self.resultG = []
@@ -320,13 +318,12 @@ class queryNode(object):
 
 
 class mcts(object):
-    def __init__(self, queryObj=None, depthL=10, timeL=1000, gamma=0.1, decay=0.1):
+    def __init__(self, queryObj=None, depthL=10, timeL=1000, gamma=0.1):
         self.queryObj = queryObj
         self.depthL = depthL
         # self.timeL = datetime.timedelta(seconds=timeL)  # in seconds
         self.timeL = int(timeL)
         self.gamma = gamma
-        self.decay = decay
         self.initialization()
         self.dataConfig = API().query(url='py/querySTConfig', type="get")
         self.scubeNum = self.dataConfig['scubeNum']
@@ -354,7 +351,6 @@ class mcts(object):
                 self.getPpt(idx)
 
     def mtcsStep(self):
-        self.recordsDecay()
         i = 0
         while True:
             print('------------ Round', str(i+1), '------------')
@@ -512,13 +508,13 @@ class mcts(object):
 
         # profitSortedList = sorted(idProfitDict.items(), key=lambda item:item[1], reverse=True)
         # idxSortedList = [item[0] for item in profitSortedList]
-        recommendList = [{'id': idx, 
-            'father': self.nodesParent[idx], 
-            'source': ["people", "car", "blog", "point_of_interest"][self.nodesList[idx].source], 
-            'dataid': self.nodesList[idx].dataIdFromFather,
-            'mode': self.nodesList[idx].conditionType,
-            'sqlobject': self.nodesList[idx].conditionDict}
-            for idx in idxSortedList[: recommendNum]]
+        # recommendList = [{'id': idx, 
+        #     'father': self.nodesParent[idx], 
+        #     'source': ["people", "car", "blog", "point_of_interest"][self.nodesList[idx].source], 
+        #     'dataid': self.nodesList[idx].dataIdFromFather,
+        #     'mode': self.nodesList[idx].conditionType,
+        #     'sqlobject': self.nodesList[idx].conditionDict}
+        #     for idx in idxSortedList[: recommendNum]]
         # return recommendList
 
     def nodesRecommend(self, recommendNum=3):
@@ -654,6 +650,7 @@ class mcts(object):
         for root in self.rootsList:
             self.getNodeHeight(root)
             self.getNodeDepth(root, 0)
+        print('max depth of tree:', max(self.depthList))
         # height normalization
         normHeightList = self.heightList / (max(np.max(self.depthList), self.depthL) + 1)
         pptList = [node.ppt for node in self.nodesList]
@@ -746,19 +743,22 @@ class mcts(object):
             else:
                 for idx in childIdx:
                     cprofit += self.gamma * self.nodesList[idx].profit / len(childIdx)
-            self.nodesList[current].profit = cprofit
-            self.nodesList[current].profitHistory.append(cprofit)
-            self.nodesList[current].ppt = np.mean(self.nodesList[current].profitHistory)
+            # self.nodesList[current].profit = cprofit
+            # self.nodesList[current].profitHistory.append(cprofit)
+            # self.nodesList[current].ppt = np.mean(self.nodesList[current].profitHistory)
+            self.nodesList[current].profit += cprofit
+            self.nodesList[current].times += 1
+            self.nodesList[current].ppt = self.nodesList[current].profit / self.nodesList[current].times
             current = self.nodesParent[current]
 
-    def recordsDecay(self):
-        """
-        when beginning a new search, sys need to decay times and profit in every existed node
-        :return:
-        """
-        for node in self.nodesList:
-            node.times *= self.decay
-            node.profit *= self.decay
+    # def recordsDecay(self):
+    #     """
+    #     when beginning a new search, sys need to decay times and profit in every existed node
+    #     :return:
+    #     """
+    #     for node in self.nodesList:
+    #         node.times *= self.decay
+    #         node.profit *= self.decay
     
     def recommendLog(self):
         logList = [
@@ -769,7 +769,6 @@ class mcts(object):
                 'profQ': node.profQ, 
                 'times': node.times,
                 'profit': node.profit,
-                'profitHistory': node.profitHistory,
                 'ppt': node.ppt
             } 
             for node in self.nodesList
@@ -780,6 +779,7 @@ class mcts(object):
 
 if __name__ == "__main__":
     m = mcts(query.queryObj())
+    mBeta = mcts(query.queryObj())
     # conditionDict = {
     #     'geo': [120.69783926010132, 120.69760859012602, 28.013147821134936, 28.012896816979197],
     #     'time': ["07:00:00", "08:00:00"]
@@ -800,20 +800,36 @@ if __name__ == "__main__":
         print(queryCondition)
         m.initialization()
         m.constructNewNodefromCondition(queryCondition['attr'], queryCondition['source'])
-        for _ in range(5):
-            trainItem, recommendList = m.DRLTrain()
+        for _ in range(10):
+            mBeta = copy.deepcopy(m)
+            trainItem, recommendList = mBeta.DRLTrain()
             saveJson(trainItem, 'train')
 
             choiceId = recommendList[0]['id']
-            choiceNode = m.nodesList[choiceId]
+            choiceNode = mBeta.nodesList[choiceId]
+            fatherId = mBeta.nodesParent[choiceId]
+
+            # Updata m using mBeta
+            cid = m.constructNewNodefromQuery(
+                fatherId, 
+                choiceNode.dataIdFromFather, 
+                choiceNode.conditionDict, 
+                choiceNode.source)
+            m.confirmNode(cid)
+            
+            for i in range(len(m.nodesList)):
+                if i == cid:
+                    m.nodesList[i].profit = mBeta.nodesList[choiceId].profit * meta.decay
+                    m.nodesList[i].times = mBeta.nodesList[choiceId].times * meta.decay
+                    m.nodesList[i].ppt = mBeta.nodesList[choiceId].ppt
+                else:
+                    m.nodesList[i].profit = mBeta.nodesList[i].profit * meta.decay
+                    m.nodesList[i].times = mBeta.nodesList[i].times * meta.decay
+                    m.nodesList[i].ppt = mBeta.nodesList[i].ppt
+            
             print('========================================')
-            print('choice node:', 'source', choiceNode.source, 
-                'attr:', choiceNode.conditionDict, 
+            print('choice node:', 
+                'source:', choiceNode.source, 
+                'conditionDict:', choiceNode.conditionDict, 
                 'resultLen:', choiceNode.resultLen)
             print('========================================\n')
-            m.confirmNode(choiceId)
-            # 要记录：
-            # 推荐前10的节点id，nodeList
-            recommendIdList = [item['id'] for item in recommendList]
-            saveJson({'recommendId': recommendIdList, 'currentNodesFlag': m.currentNodesFlag, 
-                'nodesParent': m.nodesParent, 'nodeList': m.recommendLog()}, 'log')
