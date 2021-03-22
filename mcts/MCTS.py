@@ -533,6 +533,9 @@ class mcts(object):
             'sqlobject': self.nodesList[idx].conditionDict}
             for idx in idxSortedList[: recommendNum]]
         return recommendList
+    
+    # def nodesRecommendForCase(self, case, recommendNum=2):
+
 
     def constructNewNodefromChild(self, pid, child):
         """
@@ -674,12 +677,18 @@ class mcts(object):
         current = croot
         childrenIndices = self.nodesList[current].children_indices
         if len(childrenIndices) == 0: return None
+
+        getScore = lambda fatherId, childId: self.nodesList[childId].ppt + 2 * math.sqrt(
+            math.log(self.nodesList[fatherId].times, math.e) / self.nodesList[childId].times)
+        
         while -1 not in childrenIndices:
-            maxProfit = 0
+            maxScore = 0
             for childIdx in childrenIndices:
-                if self.nodesList[childIdx].profit > maxProfit:
-                    maxProfit = self.nodesList[childIdx].profit
-                    current = childIdx
+                score = getScore(current, childIdx)
+                if score > maxScore:
+                    maxScore = score
+                    nextFather = childIdx
+            current = nextFather
             childrenIndices = self.nodesList[current].children_indices
         # 从当前的父节点中选择一个子节点
         currentFather = self.nodesList[current]
@@ -750,15 +759,6 @@ class mcts(object):
             self.nodesList[current].times += 1
             self.nodesList[current].ppt = self.nodesList[current].profit / self.nodesList[current].times
             current = self.nodesParent[current]
-
-    # def recordsDecay(self):
-    #     """
-    #     when beginning a new search, sys need to decay times and profit in every existed node
-    #     :return:
-    #     """
-    #     for node in self.nodesList:
-    #         node.times *= self.decay
-    #         node.profit *= self.decay
     
     def recommendLog(self):
         logList = [

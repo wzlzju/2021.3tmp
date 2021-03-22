@@ -17,7 +17,7 @@ def requestParse(req_data):
     return data
 
 
-m = mcts(query.queryObj())
+m = mcts(query.queryObj(), timeL=10)
 
 
 @app.route("/recommend", methods=["GET", "POST"])
@@ -68,14 +68,15 @@ def recommend():
     print('data:', data)
     behavior = data.get("behavior")
     if behavior == "rootQuery":
+        case = data.get('case')
         source = sourceDict[data.get("source")]
         sqlObject = data.get("sqlobject")
+        if sqlObject is None:
+            sqlObject = {
+                'geo': [120.69783926010132, 120.69760859012602, 28.013147821134936, 28.012896816979197],
+                'time': ["07:00:00", "08:00:00"]
+            }
         print('sqlObject', sqlObject)
-        # conditionDict = {}
-        # for conditionType, condition in sqlObject.items():
-        #     conditionType = conditionTypeDict[conditionType]
-        #     conditionDict[conditionType] = condition
-        # rootNode = m.constructNewNodefromCondition(conditionDict, source)
         rootNode = m.constructNewNodefromCondition(sqlObject, source)
         print('Children number of root:', len(m.nodesList))
         returnResult = {'id': rootNode, 'recommend': m.nodesRecommendByDRL()}
