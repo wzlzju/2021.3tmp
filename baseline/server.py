@@ -22,10 +22,10 @@ meta = metadata()
 m = mcts(query.queryObj(), timeL=10)
 mBeta = mcts(query.queryObj(), timeL=10)
 # Case 1
-# stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
+stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
 # Case 2
-stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
-needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
+# stepId2nodeId = {0: 0, 1: 0, 2:2, 3: 2}
+needHeatMap = {0: False, 1: True, 2: False, 3: True}
 
 
 @app.route("/recommend", methods=["GET", "POST"])
@@ -83,7 +83,7 @@ def recommend():
             sqlObject = {
                 # 'geo': [120.69783926010132, 120.61760859012602, 28.013147821134936, 27.012896816979197],
                 'geo': [120.89783926010132, 120.39760859012602, 28.13147821134936, 27.012896816979197],
-                'time': ["00:00:00", "00:10:00"]
+                'time': ["00:00:00", "08:00:00"]
             }
         print('sqlObject', sqlObject)
         # rootNode = m.constructNewNodefromCondition(sqlObject, source, stepId)
@@ -94,31 +94,21 @@ def recommend():
             case = data.get('case')
             case['source'] = sourceDictForCase[case.get("source")]
             # caseNodeId = m.constructNewNodefromCondition(case['sqlobject'], case['source'])
-            # caseNodeId = m.constructNewNodefromQuery(stepId2nodeId[data['step']], case['dataid'], case['sqlobject'], case['source'])
-            nodeId = stepId2nodeId[data['step']]
+            # caseNodeId = m.constructNewNodefromQuery(stepId2nodeId[case['step']], case['dataid'], case['sqlobject'], case['source'])
+            nodeId = stepId2nodeId[case['step']]
             caseNodeId = m.constructNewNodefromChild(nodeId, {
                 'source': case['source'],
                 'dataIdFromFather': case['dataid'],
                 'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': case['scube'],
+                'scubeList': [1],
                 'conditionDict': case['sqlobject']
             })
-        else:
-            caseNodeId = None
 
         mBeta = copy.deepcopy(m)
-        recommendList = mBeta.nodesRecommend()
+        recommendList = mBeta.nodesRecommend(3)
 
         if data.get('case') is not None:
-            if case.get('recommendsource') is not None:
-                recommendsource = case.get('recommendsource')
-                recommendList = [item for item in recommendList if item['source'] == recommendsource]
-            
-            caseidx = 0
-            if case.get('caseidx') is not None:
-                caseidx = case.get('caseidx')
-
-            recommendList = recommendList[: caseidx] + [{
+            recommendList = [{
                 'id': caseNodeId, 
                 'father': m.nodesParent[caseNodeId], 
                 'source': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].source], 
@@ -128,17 +118,11 @@ def recommend():
                 'mode': m.nodesList[caseNodeId].conditionType,
                 'sqlobject': m.nodesList[caseNodeId].conditionDict,
                 'iscase': True
-            }] + recommendList[caseidx: ]
+            }] + recommendList[: 2]
 
-        returnResult = {'id': rootNode, 'recommend': recommendList[: 3]}
-        if needHeatMap[data['step']] is True:
-            if data.get('case') is None:
-                recoid = None
-            elif case.get('recoid') is None:
-                recoid = rootNode
-            else:
-                recoid = case.get('recoid')
-            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, caseNodeId=caseNodeId)
+        returnResult = {'id': rootNode, 'recommend': recommendList}
+        if needHeatMap[case['step']] is True:
+            returnResult['heatmap'] = m.drawHeatMap()
     
     elif behavior == "childQuery":
         source = sourceDict[data.get("source")]
@@ -151,7 +135,7 @@ def recommend():
             sqlObject = {
                 # 'geo': [120.69783926010132, 120.61760859012602, 28.013147821134936, 27.012896816979197],
                 'geo': [120.89783926010132, 120.39760859012602, 28.13147821134936, 27.012896816979197],
-                'time': ["00:00:00", "08:00:00"]
+                'time': ["07:00:00", "08:00:00"]
             }
         childNode = m.constructNewNodefromQuery(
             father, dataId, sqlObject, source
@@ -165,31 +149,21 @@ def recommend():
         if data.get('case') is not None:
             case = data.get('case')
             case['source'] = sourceDictForCase[case.get("source")]
-            nodeId = stepId2nodeId[data['step']]
+            nodeId = stepId2nodeId[case['step']]
             print('case[source]:', case['source'])
             caseNodeId = m.constructNewNodefromChild(nodeId, {
                 'source': case['source'],
                 'dataIdFromFather': case['dataid'],
                 'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': case['scube'],
+                'scubeList': [1],
                 'conditionDict': case['sqlobject']
             })
-        else:
-            caseNodeId = None
         
         mBeta = copy.deepcopy(m)
-        recommendList = mBeta.nodesRecommend()
-        
-        if data.get('case') is not None:
-            if case.get('recommendsource') is not None:
-                recommendsource = case.get('recommendsource')
-                recommendList = [item for item in recommendList if item['source'] == recommendsource]
-            
-            caseidx = 0
-            if case.get('caseidx') is not None:
-                caseidx = case.get('caseidx')
+        recommendList = mBeta.nodesRecommend(3)
 
-            recommendList = recommendList[: caseidx] + [{
+        if data.get('case') is not None:
+            recommendList = [{
                 'id': caseNodeId, 
                 'father': m.nodesParent[caseNodeId], 
                 'source': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].source], 
@@ -197,19 +171,10 @@ def recommend():
                 'resultLen': m.nodesList[caseNodeId].resultLen,
                 'dataid': m.nodesList[caseNodeId].dataIdFromFather,
                 'mode': m.nodesList[caseNodeId].conditionType,
-                'sqlobject': m.nodesList[caseNodeId].conditionDict,
+                'sqlobject': m.nodesList[caseNodeId].conditionDict, 
                 'iscase': True
-            }] + recommendList[caseidx: ]
-
-        returnResult = {"recommend": recommendList[: 3]}
-        if needHeatMap[data['step']] is True:
-            if data.get('case') is None:
-                recoid = None
-            elif case.get('recoid') is None:
-                recoid = cidx
-            else:
-                recoid = case.get('recoid')
-            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, caseNodeId=caseNodeId)
+            }] + recommendList[: 2]
+        returnResult = {"recommend": recommendList}
     
     else:
         returnResult = {}
