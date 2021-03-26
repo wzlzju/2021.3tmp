@@ -23,6 +23,7 @@ m = mcts(query.queryObj(), timeL=10)
 mBeta = mcts(query.queryObj(), timeL=10)
 # Case 1
 # stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
+# needHeatMap = {0: False, 1: False, 2: False, 3: False, 4: False}
 # Case 2
 stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
 needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
@@ -100,7 +101,7 @@ def recommend():
                 'source': case['source'],
                 'dataIdFromFather': case['dataid'],
                 'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': case['scube'],
+                'scubeList': case.get('scube') if case.get('scube') is not None else [1],
                 'conditionDict': case['sqlobject']
             })
         else:
@@ -171,7 +172,7 @@ def recommend():
                 'source': case['source'],
                 'dataIdFromFather': case['dataid'],
                 'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': case['scube'],
+                'scubeList': case.get('scube') if case.get('scube') is not None else [1],
                 'conditionDict': case['sqlobject']
             })
         else:

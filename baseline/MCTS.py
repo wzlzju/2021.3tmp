@@ -101,17 +101,8 @@ class queryNode(object):
             'queryFrom:', self.queryFrom, 
             'conditionDict:', self.conditionDict, 
             'resultLen:', self.resultLen, '\n')
-        
-        oldDataNum = self.resultLen - newDataNum
-        if newDataNum - oldDataNum/10 <= 0:
-            self.profQ = 0
-        elif meta.dataNum[self.source]-len(meta.recordData[self.source]) <= 0:
-            self.profQ = 0
-        else:
-            self.profQ = abs(math.log((newDataNum-oldDataNum/10)/(
-                meta.dataNum[self.source]-len(meta.recordData[self.source])), 2))
-        
-        self.profit, self.times, self.ppt = 0.0, 0, 1.0
+
+        self.ppt = newDataNum
 
     def grouping(self):
         self.resultG = []
