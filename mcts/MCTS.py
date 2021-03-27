@@ -420,6 +420,13 @@ class mcts(object):
             heatMap[idx]['value'] = heat
         return heatMap
     
+    def getDRLInput(self):
+        DRLInput = [0] * len(self.dataIdList)
+        for dataSet in meta.recordData:
+            for dataId in dataSet:
+                DRLInput[self.dataIdDict[dataId]] = 1
+        return DRLInput
+    
     def DRLTrain(self, recommendNum=10):
         self.mtcsStep()
         self.pptDict = {}
@@ -433,11 +440,6 @@ class mcts(object):
                 targetIdx = self.getTargetIdx(scube, self.nodesList[nodeId].source, 0)
                 geoProfit[targetIdx] += nodeProfit / len(self.nodesList[nodeId].scubeList)
         
-        DRLInput = [0] * len(self.dataIdList)
-        for dataSet in meta.recordData:
-            for dataId in dataSet:
-                DRLInput[self.dataIdDict[dataId]] = 1
-        
         pptSortedList = sorted(self.pptDict.items(), key=lambda item:item[1], reverse=True)
         idxSortedList = [item[0] for item in pptSortedList]
         recommendList = [{'id': idx, 
@@ -448,15 +450,15 @@ class mcts(object):
             'sqlobject': self.nodesList[idx].conditionDict}
             for idx in idxSortedList[: recommendNum]]
             
-        return {'input': DRLInput, 'target': geoProfit}, recommendList
+        return {'input': self.getDRLInput(), 'target': geoProfit}, recommendList
     
-    def nodesRecommendByDRL(self, recommendNum=3):
+    def nodesRecommendByDRL(self, targetProfit, recommendNum=3):
         start = datetime.datetime.utcnow()
-        # targetProfit = [0] * (self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
-        targetProfit = np.random.rand(self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
-        targetProfit = targetProfit / np.sum(targetProfit)
-        targetProfit = targetProfit.tolist()
-        # print(len(targetProfit), sum(targetProfit))
+        # # targetProfit = [0] * (self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
+        # targetProfit = np.random.rand(self.scubeNum * meta.sourceNum * meta.conditionTypeNum)
+        # targetProfit = targetProfit / np.sum(targetProfit)
+        # targetProfit = targetProfit.tolist()
+        # # print(len(targetProfit), sum(targetProfit))
         
         def recordAvailChild(current):
             cnode = self.nodesList[current]

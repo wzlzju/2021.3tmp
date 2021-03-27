@@ -20,12 +20,12 @@ def requestParse(req_data):
 
 meta = metadata()
 m = mcts(query.queryObj(), timeL=10)
-mBeta = mcts(query.queryObj(), timeL=10)
 # Case 1
-stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
+# stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
+# needHeatMap = {0: False, 1: False, 2: False, 3: False, 4: False}
 # Case 2
-# stepId2nodeId = {0: 0, 1: 0, 2:2, 3: 2}
-needHeatMap = {0: False, 1: True, 2: False, 3: True}
+stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
+needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
 
 
 @app.route("/recommend", methods=["GET", "POST"])
@@ -83,46 +83,16 @@ def recommend():
             sqlObject = {
                 # 'geo': [120.69783926010132, 120.61760859012602, 28.013147821134936, 27.012896816979197],
                 'geo': [120.89783926010132, 120.39760859012602, 28.13147821134936, 27.012896816979197],
-                'time': ["00:00:00", "08:00:00"]
+                'time': ["00:00:00", "00:10:00"]
             }
         print('sqlObject', sqlObject)
         # rootNode = m.constructNewNodefromCondition(sqlObject, source, stepId)
         rootNode = m.constructNewNodefromCondition(sqlObject, source)
         print('Children number of root:', len(m.nodesList[rootNode].possible_children))
 
-        if data.get('case') is not None:
-            case = data.get('case')
-            case['source'] = sourceDictForCase[case.get("source")]
-            # caseNodeId = m.constructNewNodefromCondition(case['sqlobject'], case['source'])
-            # caseNodeId = m.constructNewNodefromQuery(stepId2nodeId[case['step']], case['dataid'], case['sqlobject'], case['source'])
-            nodeId = stepId2nodeId[case['step']]
-            caseNodeId = m.constructNewNodefromChild(nodeId, {
-                'source': case['source'],
-                'dataIdFromFather': case['dataid'],
-                'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': [1],
-                'conditionDict': case['sqlobject']
-            })
-
-        mBeta = copy.deepcopy(m)
-        recommendList = mBeta.nodesRecommend(3)
-
-        if data.get('case') is not None:
-            recommendList = [{
-                'id': caseNodeId, 
-                'father': m.nodesParent[caseNodeId], 
-                'source': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].source], 
-                'sourceFromFather': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].sourceFromFather], 
-                'resultLen': m.nodesList[caseNodeId].resultLen,
-                'dataid': m.nodesList[caseNodeId].dataIdFromFather,
-                'mode': m.nodesList[caseNodeId].conditionType,
-                'sqlobject': m.nodesList[caseNodeId].conditionDict,
-                'iscase': True
-            }] + recommendList[: 2]
-
-        returnResult = {'id': rootNode, 'recommend': recommendList}
-        if needHeatMap[case['step']] is True:
-            returnResult['heatmap'] = m.drawHeatMap()
+        recommendList = m.nodesRecommend()
+        # recommendList = [item for item in recommendList if item['source'] != 'point_of_interest']
+        returnResult = {'id': rootNode, 'recommend': recommendList[: 3]}
     
     elif behavior == "childQuery":
         source = sourceDict[data.get("source")]
@@ -135,7 +105,7 @@ def recommend():
             sqlObject = {
                 # 'geo': [120.69783926010132, 120.61760859012602, 28.013147821134936, 27.012896816979197],
                 'geo': [120.89783926010132, 120.39760859012602, 28.13147821134936, 27.012896816979197],
-                'time': ["07:00:00", "08:00:00"]
+                'time': ["00:00:00", "08:00:00"]
             }
         childNode = m.constructNewNodefromQuery(
             father, dataId, sqlObject, source
@@ -145,46 +115,15 @@ def recommend():
     elif behavior == "selectRecommend":
         cidx = data.get("id")
         m.confirmNode(cidx)
-
-        if data.get('case') is not None:
-            case = data.get('case')
-            case['source'] = sourceDictForCase[case.get("source")]
-            nodeId = stepId2nodeId[case['step']]
-            print('case[source]:', case['source'])
-            caseNodeId = m.constructNewNodefromChild(nodeId, {
-                'source': case['source'],
-                'dataIdFromFather': case['dataid'],
-                'sourceFromFather': m.nodesList[nodeId].source,
-                'scubeList': [1],
-                'conditionDict': case['sqlobject']
-            })
         
-        mBeta = copy.deepcopy(m)
-        recommendList = mBeta.nodesRecommend(3)
-
-        if data.get('case') is not None:
-            recommendList = [{
-                'id': caseNodeId, 
-                'father': m.nodesParent[caseNodeId], 
-                'source': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].source], 
-                'sourceFromFather': ["people", "car", "blog", "point_of_interest"][m.nodesList[caseNodeId].sourceFromFather], 
-                'resultLen': m.nodesList[caseNodeId].resultLen,
-                'dataid': m.nodesList[caseNodeId].dataIdFromFather,
-                'mode': m.nodesList[caseNodeId].conditionType,
-                'sqlobject': m.nodesList[caseNodeId].conditionDict, 
-                'iscase': True
-            }] + recommendList[: 2]
-        returnResult = {"recommend": recommendList}
+        recommendList = m.nodesRecommend()
+        # recommendList = [item for item in recommendList if item['source'] != 'point_of_interest']
+        returnResult = {"recommend": recommendList[: 3]}
     
     else:
         returnResult = {}
-    
-    for i in range(len(m.nodesList)):
-        m.nodesList[i].profit = mBeta.nodesList[i].profit * meta.decay
-        m.nodesList[i].times = mBeta.nodesList[i].times * meta.decay
-        m.nodesList[i].ppt = mBeta.nodesList[i].ppt
 
-    print(m.nodesParent)
+    # print(m.nodesParent)
     print('returnResult:', returnResult)
     response = Response(json.dumps(returnResult), mimetype="application/json")
     # response.headers["Access-Control-Allow-Origin"] = "*"

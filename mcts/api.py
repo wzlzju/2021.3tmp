@@ -86,11 +86,12 @@ class API:
     def query(self, **kwargs):
         requestType = kwargs.get("type")
         url = kwargs.get("url")
+        hostIP = kwargs.get("host") if kwargs.get("host") is not None else HOST
         if requestType is 'get':
-            res = RequestHandler().get(HOST+url)
+            res = RequestHandler().get(hostIP+url)
         else:
             payload = kwargs.get("payload")
-            res = RequestHandler().post(HOST+url, json=payload)
+            res = RequestHandler().post(hostIP+url, json=payload)
         data = convert_resbody_to_obj(res)
         return data
 

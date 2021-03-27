@@ -16,9 +16,20 @@ class metadata(object):
         self.sourceNum = len(self.newSourceName)
         self.source = list(range(self.sourceNum))
         self.sourceDataType = ["traj", "traj", "point", "point"]
-        self.sourceDataNSTAttr = [[], [], [], []]
+        self.sourceDataNSTAttr = [[], [], [], []] 
         self.sourceSTType = ["st", "st", "sta", "sa"]
-        self.dataNum = [3799, 1000, 7350, 5000]
+
+        self.dataConfig = API().query(url='py/querySTConfig', type="get")
+        self.scubeNum = self.dataConfig['scubeNum']
+        self.dataNum = self.dataConfig['dataSetInfo']['num']
+        self.dataIds = self.dataConfig['dataSetInfo']['ids']
+        self.dataIdList = []
+        for ids in self.dataIds:
+            self.dataIdList += ids
+        self.dataIdDict = dict(zip(self.dataIdList, range(len(self.dataIdList))))
+
+        self.heatMap = API().query(url='scubeHeatMap', type="get")
+
         self.conditionTypeNum = 3
         self.decay=0.1
         self.initialization()
@@ -84,6 +95,7 @@ class queryNode(object):
             self.scubeList = kwargs.get('scubeList')
             self.result = self.queryObj.queryByDataId(
                 self.dataIdFromFather, self.sourceFromFather, self.source, self.conditionType)
+            meta.copyFromRecord()
             newDataNum = meta.updateTmpData(self.source, self.result)
             printInfo += 'sourceFromFather: ' + str(self.sourceFromFather) + ' dataIdFromFather: ' + self.dataIdFromFather
         
@@ -101,8 +113,12 @@ class queryNode(object):
             'queryFrom:', self.queryFrom, 
             'conditionDict:', self.conditionDict, 
             'resultLen:', self.resultLen, '\n')
-
-        self.ppt = newDataNum
+        
+        oldDataNum = meta.dataNum[self.source] - len(meta.recordData[self.source])
+        if oldDataNum == 0:
+            self.ppt = 0
+        else:
+            self.ppt = newDataNum / oldDataNum
 
     def grouping(self):
         self.resultG = []
@@ -321,10 +337,9 @@ class mcts(object):
         self.timeL = int(timeL)
         self.gamma = gamma
         self.initialization()
-        self.dataConfig = API().query(url='py/querySTConfig', type="get")
-        self.scubeNum = self.dataConfig['scubeNum']
-        self.dataIdList = API().query(url='py/queryDataSetIds', type="get")
-        self.dataIdDict = dict(zip(self.dataIdList, range(len(self.dataIdList))))
+        self.scubeNum = meta.scubeNum
+        self.dataIdList = meta.dataIdList
+        self.dataIdDict = meta.dataIdDict
     
     def initialization(self):
         self.nodesList = []  # [queryNode]
@@ -340,24 +355,26 @@ class mcts(object):
     
     def getPpt(self, current):
         childIdx = self.nodesChildren[current]
-        if self.currentNodesFlag[current] != 1:
+        if self.currentNodesFlag[current] == 1:
             self.pptDict[current] = self.nodesList[current].ppt
         elif len(childIdx) != 0:
             for idx in childIdx:
                 self.getPpt(idx)
     
-    def selectChild(self, recommendNum=1):
+    def nodesRecommend(self, recommendNum=3):
         self.pptDict = {}
         for root in self.rootsList:
             self.getPpt(root)
         
         start = datetime.datetime.utcnow()
+        print('start:', start, 'self.pptDict', self.pptDict)
         self.nodeId2value = {}
-        for nodeId in self.pptDict.values():
+        for nodeId in self.pptDict.keys():
             cnode = self.nodesList[nodeId]
             for child in cnode.possible_children:
                 end = datetime.datetime.utcnow()
-                if end - start >= datetime.timedelta(seconds=60):
+                if end - start >= datetime.timedelta(seconds=10):
+                    print('break from time')
                     break
                 resultIdx, conditionType, selectSource = child
                 conditionDict = self.getConditionDict(
@@ -368,9 +385,10 @@ class mcts(object):
                     'scubeList': cnode.result[resultIdx]['scube'],
                     'conditionDict': conditionDict}
                 )
-                self.nodeId2value[childNodeId] = self.nodesList[childNodeId].resultLen
+                if self.nodesList[childNodeId].ppt > 0:
+                    self.nodeId2value[childNodeId] = self.nodesList[childNodeId].ppt
         
-        nodeIdSortByValue = sorted(self.nodeId2value.items(), key=lambda item:item[1], reverse=True)
+        nodeIdSortByValue = sorted(self.nodeId2value.items(), key=lambda item:item[1], reverse=False)
         nodeIdSortList = [item[0] for item in nodeIdSortByValue]
         recommendList = [{'id': idx, 
             'father': self.nodesParent[idx], 

@@ -37,7 +37,7 @@ def convert_resbody_to_obj(res):
     return data
 
 
-HOST = "http://10.76.0.196:7001/"
+HOST = "http://10.76.0.196:7002/"
 
 
 class API:
