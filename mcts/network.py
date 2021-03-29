@@ -29,7 +29,7 @@ class ResBlock(nn.Module):
 class Net(nn.Module):
     def __init__(self, value_branch=False):
         super(Net, self).__init__()
-        self.input_len = 17191
+        self.input_len = 17190
         self.dim_in = 1
         self.dim_hidden = 256
         self.dim_out = 600

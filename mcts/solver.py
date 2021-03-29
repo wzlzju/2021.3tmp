@@ -74,11 +74,11 @@ class Solver:
     def test(self, data):
         # input shape: numpy array [1, 17191]
         # output shape: policy=numpy array [600]
+        data = torch.tensor(data, dtype=torch.float32)
         if self.use_gpu:
             data = data.cuda()
 
         self.model.eval()
-
         if self.value_branch:
             vector_pred, scalar_pred = self.model(data.unsqueeze(dim=0))
         else:
@@ -98,4 +98,4 @@ class Solver:
         torch.save(self.model.state_dict(), path)
 
     def load_model(self, path):
-        self.model.load_state_dict(torch.load(path))
+        self.model.load_state_dict(torch.load(path, map_location=torch.device('cpu')))

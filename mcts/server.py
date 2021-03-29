@@ -27,6 +27,8 @@ mBeta = mcts(query.queryObj(), timeL=10)
 # Case 2
 stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
 needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
+recoidDict = {1: 1, 3: 1, 4: 1}
+filterNodeIdDict = {1: [], 3: [2], 4: [2, 4]}
 
 
 @app.route("/recommend", methods=["GET", "POST"])
@@ -133,13 +135,15 @@ def recommend():
 
         returnResult = {'id': rootNode, 'recommend': recommendList[: 3]}
         if needHeatMap[data['step']] is True:
-            if data.get('case') is None:
-                recoid = None
-            elif case.get('recoid') is None:
-                recoid = rootNode
-            else:
-                recoid = case.get('recoid')
-            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, caseNodeId=caseNodeId)
+            # if data.get('case') is None:
+            #     recoid = None
+            # elif case.get('recoid') is None:
+            #     recoid = rootNode
+            # else:
+            #     recoid = case.get('recoid')
+            recoid = recoidDict.get(data['step'])
+            filterNodeIdList = filterNodeIdDict.get(data['step'])
+            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, filterNodeIdList=filterNodeIdList, caseNodeId=caseNodeId)
     
     elif behavior == "childQuery":
         source = sourceDict[data.get("source")]
@@ -204,13 +208,16 @@ def recommend():
 
         returnResult = {"recommend": recommendList[: 3]}
         if needHeatMap[data['step']] is True:
-            if data.get('case') is None:
-                recoid = None
-            elif case.get('recoid') is None:
-                recoid = cidx
-            else:
-                recoid = case.get('recoid')
-            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, caseNodeId=caseNodeId)
+            # if data.get('case') is None:
+            #     recoid = None
+            # elif case.get('recoid') is None:
+            #     recoid = cidx
+            # else:
+            #     recoid = case.get('recoid')
+            # returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, caseNodeId=caseNodeId)
+            recoid = recoidDict.get(data['step'])
+            filterNodeIdList = filterNodeIdDict.get(data['step'])
+            returnResult['heatmap'] = mBeta.drawHeatMap(FatherNodeId=recoid, filterNodeIdList=filterNodeIdList, caseNodeId=caseNodeId)
     
     else:
         returnResult = {}

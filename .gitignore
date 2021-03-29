@@ -5,3 +5,4 @@
 
 mcts/data/
 mcts/log.json
+checkpoint/tmp.pth
