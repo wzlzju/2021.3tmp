@@ -11,7 +11,7 @@ from tools import *
 
 class metadata(object):
     def __init__(self):
-        self.sourceName = ["mobileTraj", "taxiTraj", "weibo", "poi"]
+        self.sourceName = ["people", "car", "blog", "point_of_interest"]
         self.newSourceName = ["people", "car", "weibo", "poi"]
         self.sourceNum = len(self.newSourceName)
         self.source = list(range(self.sourceNum))
@@ -72,8 +72,11 @@ class queryNode(object):
         self.queryFrom = kwargs.get('queryFrom')
         self.conditionDict = kwargs.get('conditionDict')
 
-        if self.source in meta.newSourceName:
+        if self.source in meta.sourceName:
+            self.source = meta.sourceName.index(self.source)
+        elif self.source in meta.newSourceName:
             self.source = meta.newSourceName.index(self.source)
+        
         if 'time' in self.conditionDict.keys():
             if 'geo' in self.conditionDict.keys():
                 self.conditionType = 0
@@ -357,7 +360,8 @@ class mcts(object):
         self.heightList = None  # min distance to leaf node
         self.depthList = None  # distance to root node
         self.pptDict = None
-        self.availChildDict, self.target2dataId, self.dataId2profit, self.dataId2coin = {}, {}, {}, {}
+        # self.availChildDict, self.target2dataId, self.dataId2profit, self.dataId2coin = {}, {}, {}, {}
+        self.availChildDict, self.target2childKey, self.childKey2profit, self.childKey2coin = {}, {}, {}, {}
         meta.initialization()
     
     def getPpt(self, current):
@@ -472,16 +476,21 @@ class mcts(object):
         # targetProfit = targetProfit / np.sum(targetProfit)
         # targetProfit = targetProfit.tolist()
         # # print(len(targetProfit), sum(targetProfit))
+
+        getChildKey = lambda dataId, source: dataId + '-' + str(source)
         
         def recordAvailChild(current):
+            if self.currentNodesFlag[current] != 1:
+                return
             cnode = self.nodesList[current]
             for idx, child in enumerate(cnode.possible_children):
                 if cnode.children_indices[idx] < 0:
                     resultId, conditionType, source = child
                     cresult = cnode.result[resultId]
                     # record infomation of all available children
-                    if cresult['id'] not in self.availChildDict.keys():
-                        self.availChildDict[cresult['id']] = {
+                    childKey = getChildKey(cresult['id'], source)
+                    if childKey not in self.availChildDict.keys():
+                        self.availChildDict[childKey] = {
                             'father': current, 
                             'source': ["people", "car", "blog", "point_of_interest"][source], 
                             'dataid': cresult['id'],
@@ -492,13 +501,12 @@ class mcts(object):
                         }
                         for scube in cresult['scube']:
                             targetIdx = self.getTargetIdx(scube, source, conditionType)
-                            if targetIdx not in self.target2dataId.keys():
-                                self.target2dataId[targetIdx] = [cresult['id']]
-                            elif cresult['id'] not in self.target2dataId[targetIdx]:
-                                self.target2dataId[targetIdx].append(cresult['id'])
+                            if targetIdx not in self.target2childKey.keys():
+                                self.target2childKey[targetIdx] = [childKey]
+                            elif childKey not in self.target2childKey[targetIdx]:
+                                self.target2childKey[targetIdx].append(childKey)
             
             print('len(self.availChildDict)', len(self.availChildDict))
-
             # traverse all children nodes
             childIdx = self.nodesChildren[current]
             if len(childIdx) != 0:
@@ -509,59 +517,67 @@ class mcts(object):
         for root in self.rootsList:
             recordAvailChild(root)
         
-        self.dataId2profit = {}
-        for targetIdx, dataIdList in self.target2dataId.items():
-            for dataId in dataIdList:
-                profitPart = targetProfit[targetIdx] / len(dataIdList)
-                if dataId not in self.dataId2profit.keys():
-                    self.dataId2profit[dataId] = profitPart
+        self.childKey2profit = {}
+        for targetIdx, childKeyList in self.target2childKey.items():
+            for childKey in childKeyList:
+                profitPart = targetProfit[targetIdx] / len(childKeyList)
+                if childKey not in self.childKey2profit.keys():
+                    self.childKey2profit[childKey] = [profitPart]
                 else:
-                    self.dataId2profit[dataId] += profitPart
+                    self.childKey2profit[childKey].append(profitPart)
+        
+        for childKey, profitList in self.childKey2profit.items():
+            self.childKey2profit[childKey] = float(np.mean(profitList))
         
         end1 = datetime.datetime.utcnow()
         # print('Time 1 consume:', end1-start)
 
-        for dataId in self.dataId2profit.keys():
-            dataInfo = self.availChildDict[dataId]
-            self.dataId2coin[dataId] = len(meta.recordStcubes.intersection(dataInfo['stcubeList']))
-        dataIdSortedByCoin = sorted(self.dataId2coin.items(), key=lambda item:item[1], reverse=True)
-        dataIdSortedByCoin = [item[0] for item in dataIdSortedByCoin]
-        segmentLen = len(dataIdSortedByCoin) // recommendNum
-        dataIdSortedByCoin = [dataIdSortedByCoin[i*segmentLen: (i+1)*segmentLen] for i in range(recommendNum)]
-        dataIdSortedList = [sorted(segment, key=lambda item: self.dataId2profit[item], reverse=True)[0] 
-            for segment in dataIdSortedByCoin]
+        for childKey in self.childKey2profit.keys():
+            dataInfo = self.availChildDict[childKey]
+            self.childKey2coin[childKey] = len(meta.recordStcubes.intersection(dataInfo['stcubeList']))
+        childSortedByCoin = sorted(self.childKey2coin.items(), key=lambda item:item[1], reverse=True)
+        childSortedByCoin = [item[0] for item in childSortedByCoin]
+        segmentLen = len(childSortedByCoin) // recommendNum
+        childSortedByCoin = [childSortedByCoin[i*segmentLen: (i+1)*segmentLen] for i in range(recommendNum)]
+        childSortedByCoin = [sorted(segment, key=lambda item: self.childKey2profit[item], reverse=True) 
+            for segment in childSortedByCoin]
         
-        # dataIdSortedList = sorted(self.dataId2profit.items(), key=lambda item:item[1], reverse=True)
-        # dataIdSortedList = [item[0] for item in dataIdSortedList]
-        # meta.copyFromRecord()
-        # for dataId in dataIdSortedList:
-        #     dataInfo = self.availChildDict[dataId]
-        #     self.dataId2coin[dataId] = len(meta.recordStcubes.intersection(dataInfo['stcubeList']))
-        # dataIdSortedByCoin = sorted(self.dataId2coin.items(), key=lambda item:item[1], reverse=True)
-        # dataIdSortedByCoin = [item[0] for item in dataIdSortedByCoin]
-        # segmentLen = len(dataIdSortedList) // recommendNum
-        # dataIdSortedList = [dataIdSortedList[i*segmentLen][0] for i in range(recommendNum)]
+        recommendSourceCount = {}
+        childSortList = []
+        for sortList in childSortedByCoin:
+            for childKey in sortList:
+                source = self.availChildDict[childKey]['source']
+                # print('source', source)
+                if source not in recommendSourceCount.keys():
+                    recommendSourceCount[source] = 0
+                if recommendSourceCount[source] < 2:
+                    childSortList.append(childKey)
+                    recommendSourceCount[source] += 1
+                    break
+        print('recommendSourceCount', recommendSourceCount)
 
-        for dataId in dataIdSortedList:
-            dataInfo = self.availChildDict[dataId]
+        for childKey in childSortList:
+            dataInfo = self.availChildDict[childKey]
             cid = self.constructNewNodefromChild(dataInfo['father'], {
                 'source': dataInfo['source'], 
-                'dataIdFromFather': dataId,
+                'dataIdFromFather': dataInfo['dataid'],
                 'sourceFromFather': self.nodesList[dataInfo['father']].source,
                 'scubeList': dataInfo['scubeList'],
                 'conditionDict': dataInfo['sqlobject'], 
             })
-            self.availChildDict[dataId]['id'] = cid
+            self.availChildDict[childKey]['id'] = cid
             # 计算每个推荐项的查询结果的stcube的set，总共3个
             # 所有已经获得的数据的stcube的set（所有用户已经建立节点的result）
             # 用上面的3个set分别与下面的set求交集
             # 取出这个交集的大小，用来对3个推荐项排序
-        #     self.dataId2coin[dataId] = len(meta.recordStcubes.intersection(dataInfo['stcubeList']))
-        # dataIdSortedByCoin = sorted(self.dataId2coin.items(), key=lambda item:item[1], reverse=True)
+            # self.childKey2coin[dataId] = len(meta.recordStcubes.intersection(dataInfo['stcubeList']))
+        # dataIdSortedByCoin = sorted(self.childKey2coin.items(), key=lambda item:item[1], reverse=True)
         # dataIdSortedByCoin = [item[0] for item in dataIdSortedByCoin]
         
-        recommendList = [copy.deepcopy(self.availChildDict[dataId]) for dataId in dataIdSortedList]
+        recommendList = [copy.deepcopy(self.availChildDict[childKey]) for childKey in childSortList]
         for recommend in recommendList:
+            print('resultLen', self.nodesList[recommend['id']].resultLen)
+            recommend['resultLen'] = self.nodesList[recommend['id']].resultLen,
             recommend.pop('scubeList')
             recommend.pop('stcubeList')
         

@@ -84,10 +84,9 @@ class Solver:
         else:
             vector_pred = self.model(data.unsqueeze(dim=0))
 
-        # policy = F.softmax(vector_pred, dim=1).
-        policy = vector_pred
+        policy = F.softmax(vector_pred, dim=1)
         policy = policy[0].detach().cpu().numpy()
-
+        
         if self.value_branch:
             value = scalar_pred[0].cpu().item()
             return policy, value

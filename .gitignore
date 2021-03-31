@@ -4,5 +4,5 @@
 *.DS_Store
 
 mcts/data/
-mcts/log.json
+mcts/test.json
 checkpoint/tmp.pth

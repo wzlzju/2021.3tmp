@@ -24,8 +24,8 @@ m = mcts(query.queryObj(), timeL=10)
 # stepId2nodeId = {0: 0, 1: 0, 2: 2, 3: 2}
 # needHeatMap = {0: False, 1: False, 2: False, 3: False, 4: False}
 # Case 2
-stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
-needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
+# stepId2nodeId = {0: None, 1: 1, 2: None, 3: 1, 4: None, 5: None}
+# needHeatMap = {0: False, 1: True, 2: False, 3: True, 4: True}
 
 
 @app.route("/recommend", methods=["GET", "POST"])
