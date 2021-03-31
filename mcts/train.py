@@ -33,18 +33,22 @@ class DRLTrainer(object):
                 conditionList.append(queryCondition['condition'])
         self.testEpoch = len(conditionList)
 
+        profQList = []
         for i in range(self.testEpoch):
+            print('Epoch:', i)
             queryCondition = conditionList[i]
             # print(queryCondition)
             self.m.initialization()
             self.m.constructNewNodefromCondition(queryCondition['attr'], queryCondition['source'])
-            profQList = []
+            
             for _ in range(self.testStep):
                 # payload = {'input': self.m.getDRLInput()}
                 solverInput = np.array([self.m.getDRLInput()])
                 # print(np.shape(solverInput))
                 # vDistrib = API().query(host='host ip', url='url', type='post', payload=payload)
                 vDistrib = self.solver.test(solverInput)
+                # print(np.shape(vDistrib))
+                # vDistrib = [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.] * 50
                 recommendList = self.m.nodesRecommendByDRL(vDistrib, recommendNum=1)
                 choiceId = recommendList[0]['id']
                 self.m.confirmNode(choiceId)

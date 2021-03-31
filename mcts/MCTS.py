@@ -489,6 +489,7 @@ class mcts(object):
                     cresult = cnode.result[resultId]
                     # record infomation of all available children
                     childKey = getChildKey(cresult['id'], source)
+                    # print(childKey)
                     if childKey not in self.availChildDict.keys():
                         self.availChildDict[childKey] = {
                             'father': current, 
@@ -506,6 +507,8 @@ class mcts(object):
                             elif childKey not in self.target2childKey[targetIdx]:
                                 self.target2childKey[targetIdx].append(childKey)
             
+            # for key, val in self.target2childKey.items():
+            #     print(key, val[:10])
             print('len(self.availChildDict)', len(self.availChildDict))
             # traverse all children nodes
             childIdx = self.nodesChildren[current]
@@ -541,6 +544,11 @@ class mcts(object):
         childSortedByCoin = [childSortedByCoin[i*segmentLen: (i+1)*segmentLen] for i in range(recommendNum)]
         childSortedByCoin = [sorted(segment, key=lambda item: self.childKey2profit[item], reverse=True) 
             for segment in childSortedByCoin]
+        
+        # for segment in childSortedByCoin:
+        #     for childKey in segment[: 20]:
+        #         print(childKey, self.childKey2profit[childKey])
+        # exit()
         
         recommendSourceCount = {}
         childSortList = []
