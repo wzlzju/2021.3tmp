@@ -1,6 +1,7 @@
 from flask import Flask, request, Response
 from flask_cors import cross_origin
 import numpy as np
+import json
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ class DRLTrainer(object):
         self.m = mcts(queryObj())
         self.trainEpoch = 10
         self.testEpoch = 5
-        self.testStep = 5
+        self.testStep = 1
         self.solver = Solver()
         self.solver.load_model('../checkpoint/tmp.pth')
     
@@ -25,9 +26,16 @@ class DRLTrainer(object):
             pass
         
         # test
+        conditionList = []
+        with open('data/test.json', 'r', encoding='utf-8') as f:
+            for line in f.readlines():
+                queryCondition = json.loads(line)
+                conditionList.append(queryCondition['condition'])
+        self.testEpoch = len(conditionList)
+
         for i in range(self.testEpoch):
-            queryCondition = API().query(type='get', url='py/mockReq')
-            print(queryCondition)
+            queryCondition = conditionList[i]
+            # print(queryCondition)
             self.m.initialization()
             self.m.constructNewNodefromCondition(queryCondition['attr'], queryCondition['source'])
             profQList = []
