@@ -19,24 +19,26 @@ class DRLTrainer(object):
         self.testStep = 1
         self.solver = Solver()
         self.solver.load_model('../checkpoint/tmp.pth')
+        self.conditionList = [API().query(type='get', url='py/mockReq') for _ in range(self.testEpoch)]
     
     def train(self):
+        
         for i in range(self.trainEpoch):
             # response = API().query(host='host ip', url='url', type='get')
             pass
         
         # test
-        conditionList = []
-        with open('data/test.json', 'r', encoding='utf-8') as f:
-            for line in f.readlines():
-                queryCondition = json.loads(line)
-                conditionList.append(queryCondition['condition'])
-        self.testEpoch = len(conditionList)
+        # conditionList = []
+        # with open('data/test.json', 'r', encoding='utf-8') as f:
+        #     for line in f.readlines():
+        #         queryCondition = json.loads(line)
+        #         conditionList.append(queryCondition['condition'])
+        # self.testEpoch = len(conditionList)
 
         profQList = []
         for i in range(self.testEpoch):
             print('Epoch:', i)
-            queryCondition = conditionList[i]
+            queryCondition = self.conditionList[i]
             # print(queryCondition)
             self.m.initialization()
             self.m.constructNewNodefromCondition(queryCondition['attr'], queryCondition['source'])
